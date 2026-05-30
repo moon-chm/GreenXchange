@@ -1,0 +1,38 @@
+# Environment variables
+.env
+.env.local
+
+# Certificates
+certs/
+*.crt
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+env/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# MinIO
+minio_data/
+
+# Postgres
+postgres_data/
+
+# Redis
+redis_data/

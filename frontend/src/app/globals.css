@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Google Fonts ─────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:ital,wght@0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ─── Palette CSS custom properties ────────────────────────────── */
+:root {
+  /* Core palette */
+  --color-parchment: #DAD7CD;
+  --color-sage:      #A3B18A;
+  --color-fern:      #588157;
+  --color-forest:    #3A5A40;
+  --color-canopy:    #344E41;
+
+  /* shadcn/ui overrides — mapped to palette */
+  --background:          35 15% 83%;    /* parchment */
+  --foreground:          153 19% 28%;   /* canopy */
+  --card:                0 0% 100%;
+  --card-foreground:     153 19% 28%;
+  --popover:             0 0% 100%;
+  --popover-foreground:  153 19% 28%;
+  --primary:             127 18% 42%;   /* fern */
+  --primary-foreground:  35 15% 83%;    /* parchment */
+  --secondary:           90 19% 61%;    /* sage */
+  --secondary-foreground:153 19% 28%;   /* canopy */
+  --muted:               90 19% 85%;
+  --muted-foreground:    153 19% 45%;
+  --accent:              139 21% 30%;   /* forest */
+  --accent-foreground:   35 15% 83%;    /* parchment */
+  --destructive:         0 72% 51%;
+  --destructive-foreground: 35 15% 83%;
+  --border:              90 19% 70%;    /* sage-ish */
+  --input:               90 19% 75%;
+  --ring:                127 18% 42%;   /* fern */
+  --radius:              1rem;
+}
+
+/* ─── Base resets ───────────────────────────────────────────────── */
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: var(--color-parchment);
+  color: var(--color-canopy);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Typography ────────────────────────────────────────────────── */
+.font-display {
+  font-family: 'Fraunces', Georgia, serif;
+}
+
+.font-mono-custom {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ─── Focus ring override — never blue ──────────────────────────── */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-fern), 0 0 0 4px rgba(88,129,87,0.2);
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-parchment);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-sage);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fern);
+}
+
+/* ─── Leaf float animation (login/register) ─────────────────────── */
+@keyframes leafFloat {
+  0%   { transform: translateY(0px) rotate(0deg);   opacity: 0.6; }
+  33%  { transform: translateY(-18px) rotate(8deg);  opacity: 0.8; }
+  66%  { transform: translateY(-8px) rotate(-4deg);  opacity: 0.7; }
+  100% { transform: translateY(0px) rotate(0deg);   opacity: 0.6; }
+}
+
+.leaf-float-1 { animation: leafFloat 6s ease-in-out infinite; }
+.leaf-float-2 { animation: leafFloat 8s ease-in-out infinite 1.5s; }
+.leaf-float-3 { animation: leafFloat 7s ease-in-out infinite 3s; }
+.leaf-float-4 { animation: leafFloat 9s ease-in-out infinite 0.8s; }
+
+/* ─── Gradient shimmer for skeleton ────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(163,177,138,0.2) 25%,
+    rgba(163,177,138,0.4) 50%,
+    rgba(163,177,138,0.2) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ─── Utilities ─────────────────────────────────────────────────── */
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+
+  .bg-parchment { background-color: var(--color-parchment); }
+  .bg-sage      { background-color: var(--color-sage); }
+  .bg-fern      { background-color: var(--color-fern); }
+  .bg-forest    { background-color: var(--color-forest); }
+  .bg-canopy    { background-color: var(--color-canopy); }
+
+  .text-parchment { color: var(--color-parchment); }
+  .text-sage      { color: var(--color-sage); }
+  .text-fern      { color: var(--color-fern); }
+  .text-forest    { color: var(--color-forest); }
+  .text-canopy    { color: var(--color-canopy); }
+
+  .border-parchment { border-color: var(--color-parchment); }
+  .border-sage      { border-color: var(--color-sage); }
+  .border-fern      { border-color: var(--color-fern); }
+  .border-forest    { border-color: var(--color-forest); }
+  .border-canopy    { border-color: var(--color-canopy); }
+}

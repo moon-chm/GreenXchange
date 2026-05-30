@@ -1,0 +1,335 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useReducedMotion, motion } from "framer-motion";
+import api from "@/lib/axios";
+import { useAuth } from "@/context/AuthContext";
+import LeafIcon from "@/components/icons/LeafIcon";
+
+/* ─── Inline SVG leaf shape ─────────────────────────────────────── */
+function FloatingLeaf({
+  className,
+  style,
+}: {
+  className: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <span className={className} style={style} aria-hidden="true">
+      <svg
+        width="40"
+        height="40"
+        viewBox="0 0 40 40"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M20 4C20 4 6 10 6 24C6 31.732 12.268 38 20 38C20 38 20 24 34 14C26 14 20 4 20 4Z"
+          fill="currentColor"
+          opacity="0.7"
+        />
+        <line
+          x1="20"
+          y1="38"
+          x2="20"
+          y2="16"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          opacity="0.5"
+        />
+      </svg>
+    </span>
+  );
+}
+
+/* ─── Spinner ────────────────────────────────────────────────────── */
+function Spinner() {
+  return (
+    <svg
+      className="animate-spin h-5 w-5 text-parchment"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+      />
+    </svg>
+  );
+}
+
+/* ─── Field row wrapper — staggered entrance ─────────────────────── */
+function FormRow({
+  children,
+  index,
+  reduced,
+}: {
+  children: React.ReactNode;
+  index: number;
+  reduced: boolean;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: reduced ? 0 : 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={
+        reduced
+          ? { duration: 0 }
+          : { delay: index * 0.06, duration: 0.35, ease: "easeOut" }
+      }
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/* ─── Page ───────────────────────────────────────────────────────── */
+export default function RegisterPage() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
+  const reduced = useReducedMotion() ?? false;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await api.post("/auth/register", { name, email, password });
+      // Auto-login after successful registration
+      const formData = new URLSearchParams();
+      formData.append("username", email);
+      formData.append("password", password);
+      const res = await api.post("/auth/login", formData, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      });
+      await login(res.data.access_token);
+      // AuthContext.login already pushes to "/" via useRouter
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        setError("An account with this email already exists.");
+      } else if (err.response?.status === 422) {
+        const detail = err.response.data?.detail;
+        if (Array.isArray(detail) && detail.length > 0) {
+          setError(detail[0]?.msg || "Please check your details and try again.");
+        } else {
+          setError("Please check your details and try again.");
+        }
+      } else {
+        setError(
+          err.response?.data?.detail || "Registration failed. Please try again."
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputClass =
+    "w-full px-4 py-3 border border-sage focus:border-fern focus:ring-2 focus:ring-fern/20 bg-white/60 rounded-xl outline-none transition-all duration-200 text-canopy placeholder-canopy/40 font-sans text-sm";
+
+  return (
+    <div className="min-h-screen flex">
+      {/* ── Left panel (desktop only) ────────────────────────────── */}
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-canopy to-forest overflow-hidden flex-col items-center justify-center px-16">
+        {/* Floating leaves */}
+        <FloatingLeaf
+          className="leaf-float-1 absolute top-[8%] left-[15%] text-sage/60"
+          style={{ fontSize: 0 }}
+        />
+        <FloatingLeaf
+          className="leaf-float-2 absolute top-[40%] right-[6%] text-parchment/30"
+          style={{ fontSize: 0 }}
+        />
+        <FloatingLeaf
+          className="leaf-float-3 absolute bottom-[15%] left-[10%] text-sage/40"
+          style={{ fontSize: 0 }}
+        />
+        <FloatingLeaf
+          className="leaf-float-4 absolute bottom-[38%] right-[22%] text-fern/50"
+          style={{ fontSize: 0 }}
+        />
+
+        {/* Logo */}
+        <motion.div
+          initial={reduced ? {} : { opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={reduced ? {} : { duration: 0.5, ease: "easeOut" }}
+          className="flex items-center gap-3 mb-12"
+        >
+          <LeafIcon size={36} className="text-sage" />
+          <span className="font-display text-2xl font-semibold text-parchment tracking-wide">
+            GreenXchange
+          </span>
+        </motion.div>
+
+        {/* Quote */}
+        <motion.blockquote
+          initial={reduced ? {} : { opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={reduced ? {} : { delay: 0.15, duration: 0.55, ease: "easeOut" }}
+          className="font-display text-3xl font-semibold text-parchment leading-snug text-center max-w-xs italic"
+        >
+          &ldquo;Every leaf is a promise of a greener world&rdquo;
+        </motion.blockquote>
+
+        {/* Subtle radial highlight */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse at 60% 30%, rgba(163,177,138,0.10) 0%, transparent 70%)",
+          }}
+        />
+      </div>
+
+      {/* ── Right panel ──────────────────────────────────────────── */}
+      <div className="flex-1 bg-parchment flex flex-col items-center justify-center px-6 py-16 min-h-screen">
+        {/* Mobile logo */}
+        <div className="flex lg:hidden items-center gap-2 mb-10">
+          <LeafIcon size={28} className="text-fern" />
+          <span className="font-display text-xl font-semibold text-canopy tracking-wide">
+            GreenXchange
+          </span>
+        </div>
+
+        <div className="w-full max-w-sm">
+          {/* Heading */}
+          <FormRow index={0} reduced={reduced}>
+            <h1 className="font-display text-3xl font-semibold text-canopy mb-1">
+              Create account
+            </h1>
+            <p className="font-sans text-sm text-canopy/60 mb-8">
+              Join GreenXchange and start making a difference
+            </p>
+          </FormRow>
+
+          <form onSubmit={handleSubmit} noValidate className="space-y-5">
+            {/* Full name */}
+            <FormRow index={1} reduced={reduced}>
+              <label
+                htmlFor="name"
+                className="block text-sm font-medium text-canopy mb-1.5"
+              >
+                Full name
+              </label>
+              <input
+                id="name"
+                type="text"
+                autoComplete="name"
+                required
+                placeholder="Jane Smith"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className={inputClass}
+              />
+            </FormRow>
+
+            {/* Email */}
+            <FormRow index={2} reduced={reduced}>
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-canopy mb-1.5"
+              >
+                Email address
+              </label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={inputClass}
+              />
+            </FormRow>
+
+            {/* Password */}
+            <FormRow index={3} reduced={reduced}>
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-canopy mb-1.5"
+              >
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                placeholder="Min. 8 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={inputClass}
+              />
+            </FormRow>
+
+            {/* Error */}
+            {error && (
+              <FormRow index={4} reduced={reduced}>
+                <p className="text-sm text-red-600 font-medium" role="alert">
+                  {error}
+                </p>
+              </FormRow>
+            )}
+
+            {/* Submit */}
+            <FormRow index={error ? 5 : 4} reduced={reduced}>
+              <motion.button
+                type="submit"
+                disabled={loading}
+                whileTap={reduced ? {} : { scale: 0.97 }}
+                className="bg-fern hover:bg-forest text-parchment rounded-xl py-3 w-full font-semibold text-sm transition-colors duration-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <Spinner />
+                    <span>Creating account…</span>
+                  </>
+                ) : (
+                  "Create account"
+                )}
+              </motion.button>
+            </FormRow>
+          </form>
+
+          {/* Footer link */}
+          <FormRow index={error ? 6 : 5} reduced={reduced}>
+            <p className="mt-6 text-center text-sm text-canopy/60">
+              Already have an account?{" "}
+              <Link
+                href="/login"
+                className="text-fern hover:text-forest font-medium transition-colors duration-200"
+              >
+                Sign in
+              </Link>
+            </p>
+          </FormRow>
+        </div>
+      </div>
+    </div>
+  );
+}
