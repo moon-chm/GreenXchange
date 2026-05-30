@@ -35,7 +35,7 @@ export default function PlantsPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await api.get<Plant[]>("/plants");
+      const res = await api.get<Plant[]>("/plants/my");
       setPlants(res.data ?? []);
     } catch (err) {
       console.error("Failed to fetch plants:", err);

@@ -264,7 +264,7 @@ export default function NewsPage() {
           params.category = CATEGORY_API_MAP[category] ?? category.toLowerCase();
         }
 
-        const res = await api.get<NewsItem[]>("/news", { params });
+        const res = await api.get<NewsItem[]>("/news/feed", { params });
         const items: NewsItem[] = res.data ?? [];
 
         setNews((prev) => (append ? [...prev, ...items] : items));

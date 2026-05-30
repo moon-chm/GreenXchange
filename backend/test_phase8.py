@@ -13,6 +13,25 @@ async def main():
     plant_id = None
     
     async with AsyncSessionLocal() as session:
+        # Disable trigger and delete user if it already exists to ensure clean run
+        try:
+            await session.execute(text("ALTER TABLE reward_transactions DISABLE TRIGGER ALL"))
+            user_res = await session.execute(text("SELECT id FROM users WHERE email = 'testreward@example.com'"))
+            existing_ids = [r[0] for r in user_res.fetchall()]
+            for eid in existing_ids:
+                await session.execute(text(f"DELETE FROM reward_transactions WHERE user_id = '{eid}'"))
+                await session.execute(text(f"DELETE FROM users WHERE id = '{eid}'"))
+            await session.execute(text("ALTER TABLE reward_transactions ENABLE TRIGGER ALL"))
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            try:
+                await session.execute(text("ALTER TABLE reward_transactions ENABLE TRIGGER ALL"))
+                await session.commit()
+            except:
+                pass
+            print(f"Initial cleanup error: {e}")
+            
         # Create a user just for this test
         await session.execute(
             text("INSERT INTO users (id, name, email, password_hash, device_fingerprint, is_active) VALUES (:id, 'Test User', 'testreward@example.com', 'hash', 'test_fp_123', true)"),
@@ -47,8 +66,16 @@ async def main():
         
     print("Cleaning up test user...")
     async with AsyncSessionLocal() as session:
-        await session.execute(text(f"DELETE FROM users WHERE id = '{user_id}'"))
-        await session.commit()
+        try:
+            await session.execute(text("ALTER TABLE reward_transactions DISABLE TRIGGER ALL"))
+            await session.execute(text(f"DELETE FROM reward_transactions WHERE user_id = '{user_id}'"))
+            await session.execute(text(f"DELETE FROM users WHERE id = '{user_id}'"))
+            await session.execute(text("ALTER TABLE reward_transactions ENABLE TRIGGER ALL"))
+            await session.commit()
+            print("Cleanup successful.")
+        except Exception as e:
+            await session.rollback()
+            print(f"Cleanup error: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -1,7 +1,8 @@
 import asyncio
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text, case
+from sqlalchemy import select, func, text, case, literal_column
+from sqlalchemy.orm import selectinload
 import logging
 
 from app.api.deps import get_db, get_current_user
@@ -53,8 +54,23 @@ async def fetch_environment(lat, lng):
     }
 
 async def fetch_plants(user_id, db):
-    result = await db.execute(select(Plant).filter(Plant.user_id == user_id))
-    return result.scalars().all()
+    result = await db.execute(
+        select(Plant)
+        .options(selectinload(Plant.species))
+        .filter(Plant.owner_id == user_id)
+    )
+    plants = result.scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "scan_id": p.scan_id,
+            "species_name": p.species.common_name if p.species else "Unknown",
+            "common_name": p.common_name,
+            "planting_date": p.planting_date,
+            "space_type": p.space_type
+        }
+        for p in plants
+    ]
 
 async def fetch_rewards(user_id, db):
     result = await db.execute(
@@ -69,7 +85,7 @@ async def fetch_rewards(user_id, db):
 async def fetch_drives(lat, lng, db):
     point = f"SRID=4326;POINT({lng} {lat})"
     location_geog = func.ST_GeographyFromText(point)
-    drive_geog = func.cast(CommunityDrive.location_center, type_=text('geography'))
+    drive_geog = func.cast(CommunityDrive.location_center, literal_column('geography'))
     
     result = await db.execute(
         select(
