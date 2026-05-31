@@ -9,10 +9,12 @@ interface Plant {
   id: string;
   species_name: string;
   scientific_name?: string;
-  qr_scan_id: string;
-  status: "verified" | "pending" | "rejected";
-  points_earned: number;
-  updated_at: string;
+  qr_scan_id?: string;
+  scan_id?: string;
+  status?: "verified" | "pending" | "rejected" | "active" | "inactive";
+  points_earned?: number;
+  updated_at?: string;
+  planting_date?: string;
 }
 
 interface PlantCardProps {
@@ -69,6 +71,12 @@ export default function PlantCard({ plant }: PlantCardProps) {
     ? {}
     : { whileHover: { y: -4, transition: { duration: 0.2, ease: "easeOut" } } };
 
+  // Safeguard fields to support different API shapes (/plants/my and general portfolio schemas)
+  const displayStatus = plant.status ?? "verified";
+  const displayScanId = plant.scan_id || plant.qr_scan_id || "N/A";
+  const displayPoints = plant.points_earned ?? 10; // Default GXC points per registration
+  const displayDate = plant.updated_at || plant.planting_date || new Date().toISOString();
+
   return (
     <motion.div
       variants={cardVariants}
@@ -77,7 +85,7 @@ export default function PlantCard({ plant }: PlantCardProps) {
     >
       {/* Status badge — absolute top-right */}
       <div className="absolute top-4 right-4 z-10">
-        <StatusBadge status={plant.status} />
+        <StatusBadge status={displayStatus} />
       </div>
 
       {/* Leaf image placeholder */}
@@ -96,18 +104,18 @@ export default function PlantCard({ plant }: PlantCardProps) {
       </div>
 
       {/* Scan ID */}
-      <p className="font-mono text-xs text-canopy/50 truncate" title={plant.qr_scan_id}>
-        {plant.qr_scan_id}
+      <p className="font-mono text-xs text-canopy/50 truncate" title={displayScanId}>
+        {displayScanId}
       </p>
 
       {/* Footer row */}
       <div className="flex items-center justify-between mt-auto pt-1 border-t border-sage/20">
         <span className="flex items-center gap-1.5 text-fern text-sm font-medium">
           <CoinsIcon size={15} />
-          {plant.points_earned.toLocaleString()} pts
+          {displayPoints.toLocaleString()} pts
         </span>
         <span className="text-xs text-canopy/50">
-          {formatDate(plant.updated_at)}
+          {formatDate(displayDate)}
         </span>
       </div>
     </motion.div>
