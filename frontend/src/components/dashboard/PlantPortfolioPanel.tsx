@@ -170,7 +170,7 @@ export default function PlantPortfolioPanel({
           {/* Register new plant card */}
           <motion.button
             variants={shouldReduce ? undefined : staggerItem}
-            onClick={() => router.push("/plants/register")}
+            onClick={() => router.push("/plants?register=true")}
             className="rounded-2xl border-2 border-dashed border-sage/50 bg-transparent hover:border-fern hover:bg-fern/5 transition-all duration-200 p-5 flex flex-col items-center justify-center gap-3 cursor-pointer min-h-[180px] group"
             aria-label="Register a new plant"
           >
