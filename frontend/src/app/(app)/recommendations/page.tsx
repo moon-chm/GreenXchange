@@ -104,14 +104,13 @@ export default function RecommendationsPage() {
         lng: lng ?? 0,
         space_type: activeFilters.has("Indoor")
           ? "indoor"
-          : activeFilters.has("Outdoor")
-          ? "outdoor"
-          : "outdoor",
+          : "outdoor_garden",
+        available_space: 10.0,
+        indoor: activeFilters.has("Indoor"),
         has_pets: activeFilters.has("Pet Safe"),
         has_children: activeFilters.has("Child Safe"),
         allergies: [],
-        maintenance_preference: activeFilters.has("Low Maintenance") ? "low" : "medium",
-        experience_level: activeFilters.has("Beginner") ? "beginner" : "intermediate",
+        experience_level: activeFilters.has("Beginner") ? "low" : "medium",
       };
 
       const res = await api.post<Species[]>("/recommendations/", body);
