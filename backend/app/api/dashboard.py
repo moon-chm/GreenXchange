@@ -155,12 +155,12 @@ async def fetch_news(lat, lng, db):
         } for r in result
     ]
 
-async def safe_fetch(coro, timeout=2.0):
+async def safe_fetch(coro, timeout=5.0):
     try:
         data = await asyncio.wait_for(coro, timeout=timeout)
         return {"stale": False, "data": data}
     except Exception as e:
-        logger.error(f"Dashboard module fetch failed: {e}")
+        logger.error(f"Dashboard module fetch failed ({type(e).__name__}): {e}")
         return {"stale": True, "data": None}
 
 @router.get("", response_model=DashboardResponse)
