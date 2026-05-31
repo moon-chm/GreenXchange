@@ -83,9 +83,11 @@ async def fetch_rewards(user_id, db):
     return {"balance": balance}
 
 async def fetch_drives(lat, lng, db):
+    from geoalchemy2 import Geography
+
     point = f"SRID=4326;POINT({lng} {lat})"
     location_geog = func.ST_GeographyFromText(point)
-    drive_geog = func.cast(CommunityDrive.location_center, type_=text('geography'))
+    drive_geog = func.cast(CommunityDrive.location_center, Geography)
     
     result = await db.execute(
         select(
