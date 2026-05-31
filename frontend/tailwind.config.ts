@@ -46,9 +46,9 @@ const config: Config = {
         ring:    "hsl(var(--ring))",
       },
       fontFamily: {
-        sans:    ["Inter", "system-ui", "sans-serif"],
-        display: ["Fraunces", "Georgia", "serif"],
-        mono:    ["JetBrains Mono", "Fira Code", "monospace"],
+        sans:    ["var(--font-inter)", "system-ui", "sans-serif"],
+        display: ["var(--font-fraunces)", "Georgia", "serif"],
+        mono:    ["var(--font-jetbrains)", "Fira Code", "monospace"],
       },
       borderRadius: {
         lg:  "var(--radius)",

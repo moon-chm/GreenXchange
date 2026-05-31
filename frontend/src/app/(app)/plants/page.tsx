@@ -35,7 +35,7 @@ export default function PlantsPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await api.get<Plant[]>("/plants");
+      const res = await api.get<Plant[]>("/plants/my");
       setPlants(res.data ?? []);
     } catch (err) {
       console.error("Failed to fetch plants:", err);
@@ -47,6 +47,16 @@ export default function PlantsPage() {
 
   useEffect(() => {
     fetchPlants();
+
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("register") === "true") {
+        setIsModalOpen(true);
+        // Clean up URL query parameters so page refresh doesn't reopen the modal
+        const newUrl = window.location.pathname;
+        window.history.replaceState({ path: newUrl }, "", newUrl);
+      }
+    }
   }, [fetchPlants]);
 
   // Filtering and Sorting

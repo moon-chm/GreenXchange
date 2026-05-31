@@ -8,7 +8,19 @@ from app.core.logging import setup_logging
 setup_logging()
 logger = logging.getLogger("backend")
 
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
 app = FastAPI(title="GreenXchange API")
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    body = await request.body()
+    logger.error(f"Validation error on {request.url.path}: {exc.errors()} | Body: {body.decode('utf-8', errors='ignore')}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": body.decode('utf-8', errors='ignore')}
+    )
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

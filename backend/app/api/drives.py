@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text, update
+from sqlalchemy import select, func, text, update, literal_column
 from sqlalchemy.exc import IntegrityError
 from typing import List
 import uuid
@@ -64,10 +64,12 @@ async def get_nearby_drives(
     radius: float = Query(50000),  # 50km default
     db: AsyncSession = Depends(get_db)
 ):
+    from geoalchemy2 import Geography
+
     point = f"SRID=4326;POINT({lng} {lat})"
     # Cast to geography for accurate distance calculations in meters
     location_geog = func.ST_GeographyFromText(point)
-    drive_geog = func.cast(CommunityDrive.location_center, type_=text('geography'))
+    drive_geog = func.cast(CommunityDrive.location_center, Geography)
     
     result = await db.execute(
         select(
@@ -77,7 +79,7 @@ async def get_nearby_drives(
             func.ST_Distance(drive_geog, location_geog).label('distance')
         )
         .filter(func.ST_DWithin(drive_geog, location_geog, radius))
-        .order_by(text('distance ASC'))
+        .order_by(literal_column('distance').asc())
         .limit(50)
     )
     

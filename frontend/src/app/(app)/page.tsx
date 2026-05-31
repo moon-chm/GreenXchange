@@ -97,7 +97,7 @@ export default function Dashboard() {
           
           <motion.button
             whileTap={shouldReduce ? undefined : { scale: 0.97 }}
-            onClick={() => router.push("/plants/register")}
+            onClick={() => router.push("/plants?register=true")}
             className="flex items-center gap-2 bg-fern hover:bg-forest text-parchment px-4 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-md shadow-fern/20"
           >
             <Plus size={14} />

@@ -98,17 +98,22 @@ export default function RecommendationsPage() {
     setResults([]);
 
     try {
-      const params: Record<string, string | number | boolean> = {};
-      if (lat !== null) params.lat = lat;
-      if (lng !== null) params.lng = lng;
-      if (activeFilters.has("Indoor")) params.indoor = true;
-      if (activeFilters.has("Outdoor")) params.outdoor = true;
-      if (activeFilters.has("Beginner")) params.experience_level = "beginner";
-      if (activeFilters.has("Low Maintenance")) params.low_maintenance = true;
-      if (activeFilters.has("Pet Safe")) params.pet_safe = true;
-      if (activeFilters.has("Child Safe")) params.child_safe = true;
+      // Build POST body matching backend RecommendationRequest schema
+      const body: Record<string, unknown> = {
+        lat: lat ?? 0,
+        lng: lng ?? 0,
+        space_type: activeFilters.has("Indoor")
+          ? "indoor"
+          : "outdoor_garden",
+        available_space: 10.0,
+        indoor: activeFilters.has("Indoor"),
+        has_pets: activeFilters.has("Pet Safe"),
+        has_children: activeFilters.has("Child Safe"),
+        allergies: [],
+        experience_level: activeFilters.has("Beginner") ? "low" : "medium",
+      };
 
-      const res = await api.get<Species[]>("/recommendations", { params });
+      const res = await api.post<Species[]>("/recommendations/", body);
       setResults(Array.isArray(res.data) ? res.data : []);
     } catch {
       setFetchError(

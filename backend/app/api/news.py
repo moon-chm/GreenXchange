@@ -52,13 +52,17 @@ from geoalchemy2 import Geography
 
 @router.get("/feed", response_model=List[NewsFeedResponse])
 async def get_news_feed(
-    lat: float = Query(...),
-    lng: float = Query(...),
+    lat: Optional[float] = Query(None),
+    lng: Optional[float] = Query(None),
     category: Optional[NewsCategory] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
+    # Default fallback if location not supplied yet
+    actual_lat = lat if lat is not None else 0.0
+    actual_lng = lng if lng is not None else 0.0
+
     # User's location geography
-    user_location = f"SRID=4326;POINT({lng} {lat})"
+    user_location = f"SRID=4326;POINT({actual_lng} {actual_lat})"
     location_geog = func.ST_GeographyFromText(user_location)
     
     # Extract geography of the news item if it exists

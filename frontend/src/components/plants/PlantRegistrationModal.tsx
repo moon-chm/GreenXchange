@@ -163,7 +163,7 @@ export default function PlantRegistrationModal({
     setIsSubmitting(true);
     setError(null);
     try {
-      await api.post("/plants", {
+      await api.post("/plants/register", {
         species_name: formData.species_name,
         description: formData.species_description,
         latitude: parseFloat(formData.latitude),

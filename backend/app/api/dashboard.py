@@ -1,7 +1,8 @@
 import asyncio
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text, case
+from sqlalchemy import select, func, text, case, literal_column
+from sqlalchemy.orm import selectinload
 import logging
 
 from app.api.deps import get_db, get_current_user
@@ -53,8 +54,23 @@ async def fetch_environment(lat, lng):
     }
 
 async def fetch_plants(user_id, db):
-    result = await db.execute(select(Plant).filter(Plant.user_id == user_id))
-    return result.scalars().all()
+    result = await db.execute(
+        select(Plant)
+        .options(selectinload(Plant.species))
+        .filter(Plant.owner_id == user_id)
+    )
+    plants = result.scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "scan_id": p.scan_id,
+            "species_name": p.species.common_name if p.species else "Unknown",
+            "common_name": p.common_name,
+            "planting_date": p.planting_date,
+            "space_type": p.space_type
+        }
+        for p in plants
+    ]
 
 async def fetch_rewards(user_id, db):
     result = await db.execute(
@@ -67,9 +83,11 @@ async def fetch_rewards(user_id, db):
     return {"balance": balance}
 
 async def fetch_drives(lat, lng, db):
+    from geoalchemy2 import Geography
+
     point = f"SRID=4326;POINT({lng} {lat})"
     location_geog = func.ST_GeographyFromText(point)
-    drive_geog = func.cast(CommunityDrive.location_center, type_=text('geography'))
+    drive_geog = func.cast(CommunityDrive.location_center, Geography)
     
     result = await db.execute(
         select(
@@ -79,7 +97,7 @@ async def fetch_drives(lat, lng, db):
             func.ST_Distance(drive_geog, location_geog).label('distance')
         )
         .filter(func.ST_DWithin(drive_geog, location_geog, 50000))
-        .order_by(text('distance ASC'))
+        .order_by(literal_column('distance').asc())
         .limit(3) # Just top 3 for dashboard
     )
     
@@ -137,12 +155,12 @@ async def fetch_news(lat, lng, db):
         } for r in result
     ]
 
-async def safe_fetch(coro, timeout=2.0):
+async def safe_fetch(coro, timeout=5.0):
     try:
         data = await asyncio.wait_for(coro, timeout=timeout)
         return {"stale": False, "data": data}
     except Exception as e:
-        logger.error(f"Dashboard module fetch failed: {e}")
+        logger.error(f"Dashboard module fetch failed ({type(e).__name__}): {e}")
         return {"stale": True, "data": None}
 
 @router.get("", response_model=DashboardResponse)
