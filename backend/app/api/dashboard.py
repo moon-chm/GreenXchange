@@ -85,7 +85,7 @@ async def fetch_rewards(user_id, db):
 async def fetch_drives(lat, lng, db):
     point = f"SRID=4326;POINT({lng} {lat})"
     location_geog = func.ST_GeographyFromText(point)
-    drive_geog = func.cast(CommunityDrive.location_center, literal_column('geography'))
+    drive_geog = func.cast(CommunityDrive.location_center, type_=text('geography'))
     
     result = await db.execute(
         select(
@@ -95,7 +95,7 @@ async def fetch_drives(lat, lng, db):
             func.ST_Distance(drive_geog, location_geog).label('distance')
         )
         .filter(func.ST_DWithin(drive_geog, location_geog, 50000))
-        .order_by(text('distance ASC'))
+        .order_by(literal_column('distance').asc())
         .limit(3) # Just top 3 for dashboard
     )
     
