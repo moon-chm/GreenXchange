@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/axios";
 import { useAuth } from "@/context/AuthContext";
+import { extractErrorMessage } from "@/lib/utils";
 import EmptyState from "@/components/shared/EmptyState";
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion";
 
@@ -184,9 +185,10 @@ function DriveCard({ drive, joined, onJoin, joining, shouldAnimate }: DriveCardP
 interface CreateDriveFormProps {
   onCreated: () => void;
   shouldAnimate: boolean;
+  userLoc: { lat: number; lng: number };
 }
 
-function CreateDrivePanel({ onCreated, shouldAnimate }: CreateDriveFormProps) {
+function CreateDrivePanel({ onCreated, shouldAnimate, userLoc }: CreateDriveFormProps) {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -199,6 +201,16 @@ function CreateDrivePanel({ onCreated, shouldAnimate }: CreateDriveFormProps) {
     lng: "",
     radius_meters: "5000",
   });
+
+  useEffect(() => {
+    if (userLoc.lat && userLoc.lng) {
+      setForm((prev) => ({
+        ...prev,
+        lat: prev.lat || userLoc.lat.toFixed(6),
+        lng: prev.lng || userLoc.lng.toFixed(6),
+      }));
+    }
+  }, [userLoc]);
 
   const inputClass =
     "w-full border border-sage focus:border-fern focus:ring-2 focus:ring-fern/20 bg-white/60 rounded-xl px-3 py-2 text-sm text-canopy placeholder:text-canopy/40 outline-none transition";
@@ -243,9 +255,7 @@ function CreateDrivePanel({ onCreated, shouldAnimate }: CreateDriveFormProps) {
       setOpen(false);
       onCreated();
     } catch (err: any) {
-      setError(
-        err.response?.data?.detail ?? "Failed to create drive. Please try again."
-      );
+      setError(extractErrorMessage(err, "Failed to create drive. Please try again."));
     } finally {
       setSubmitting(false);
     }
@@ -513,7 +523,7 @@ export default function CommunityDrivesPage() {
     }
     if (sort === "newest") {
       return (
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
       );
     }
     // popular
@@ -657,6 +667,7 @@ export default function CommunityDrivesPage() {
         <CreateDrivePanel
           onCreated={fetchDrives}
           shouldAnimate={shouldAnimate}
+          userLoc={userLoc}
         />
       </motion.div>
     </div>

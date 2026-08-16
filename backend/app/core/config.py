@@ -20,6 +20,19 @@ class Settings(BaseSettings):
     
     JWT_PRIVATE_KEY_B64: str = ""
     JWT_PUBLIC_KEY_B64: str = ""
+    GROQ_API_KEY: str = ""
+    GROQ_CARE_API_KEY: str = ""
+    
+    # Email (SMTP / Resend)
+    EMAIL_PROVIDER: str = "smtp"
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "GreenXchange <rohitak1865@gmail.com>"
+    FRONTEND_URL: str = "http://localhost"
+
     
     @property
     def jwt_private_key(self) -> str:

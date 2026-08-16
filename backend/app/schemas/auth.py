@@ -22,6 +22,21 @@ class UserResponse(BaseModel):
     email: EmailStr
     name: str
     is_active: bool
+    role: str = "USER"
+    is_org: bool = False
+    email_verified: bool = False
     
     class Config:
         from_attributes = True
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+class MessageResponse(BaseModel):
+    message: str
+    success: bool = True
+

@@ -26,9 +26,15 @@ target_metadata = Base.metadata
 # Set the sqlalchemy url from our app settings
 db_url = settings.DATABASE_URL
 if db_url.startswith("postgresql://"):
-    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 elif db_url.startswith("postgresql+psycopg2://"):
-    db_url = db_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
+    db_url = db_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+
+use_ssl = False
+if "sslmode=require" in db_url:
+    db_url = db_url.replace("?sslmode=require", "").replace("&sslmode=require", "")
+    use_ssl = True
+
 config.set_main_option("sqlalchemy.url", db_url)
 
 
@@ -78,11 +84,12 @@ async def run_async_migrations() -> None:
     and associate a connection with the context.
 
     """
-
+    connect_args = {"ssl": "require"} if use_ssl else {}
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:

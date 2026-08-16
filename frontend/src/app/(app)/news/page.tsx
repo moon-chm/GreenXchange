@@ -36,9 +36,9 @@ interface NewsItem {
 const CATEGORIES: Category[] = ["All", "AQI Alerts", "Drive Announcements", "Awareness"];
 
 const CATEGORY_API_MAP: Record<string, string> = {
-  "AQI Alerts": "aqi_alerts",
-  "Drive Announcements": "drive_announcements",
-  Awareness: "awareness",
+  "AQI Alerts": "alerts",
+  "Drive Announcements": "community",
+  Awareness: "environment",
 };
 
 const PAGE_SIZE = 10;
@@ -58,6 +58,11 @@ function timeAgo(dateString: string): string {
 }
 
 function normalisedCategory(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower === "alerts") return "AQI Alerts";
+  if (lower === "community") return "Drive Announcements";
+  if (lower === "environment") return "Awareness";
+  if (lower === "tips") return "Tips";
   return raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -65,13 +70,13 @@ function normalisedCategory(raw: string): string {
 
 function getCategoryStyle(category: string): string {
   const lower = category.toLowerCase();
-  if (lower.includes("aqi")) {
+  if (lower.includes("aqi") || lower.includes("alert")) {
     return "bg-amber-100 text-amber-800 border border-amber-200";
   }
-  if (lower.includes("drive")) {
+  if (lower.includes("drive") || lower.includes("community")) {
     return "bg-fern/15 text-fern border border-fern/30";
   }
-  if (lower.includes("awareness")) {
+  if (lower.includes("awareness") || lower.includes("environment") || lower.includes("tips")) {
     return "bg-sage/20 text-canopy border border-sage/40";
   }
   return "bg-white/60 text-canopy border border-sage/40";
@@ -79,10 +84,10 @@ function getCategoryStyle(category: string): string {
 
 function getCategoryIcon(category: string): React.ReactNode {
   const lower = category.toLowerCase();
-  if (lower.includes("aqi")) {
+  if (lower.includes("aqi") || lower.includes("alert")) {
     return <AlertTriangle size={28} className="text-amber-600" />;
   }
-  if (lower.includes("drive")) {
+  if (lower.includes("drive") || lower.includes("community")) {
     return <Users size={28} className="text-fern" />;
   }
   return <Newspaper size={28} className="text-sage" />;
@@ -247,6 +252,27 @@ export default function NewsPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [userLoc, setUserLoc] = useState<{ lat: number | null; lng: number | null }>({
+    lat: null,
+    lng: null,
+  });
+
+  // Fetch geolocation on mount
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => {
+          setUserLoc({ lat: 51.5072, lng: -0.1276 }); // London fallback
+        },
+        { timeout: 5000 }
+      );
+    } else {
+      setUserLoc({ lat: 51.5072, lng: -0.1276 });
+    }
+  }, []);
 
   // ── Fetch ────────────────────────────────────────────────────────────────
 
@@ -263,6 +289,10 @@ export default function NewsPage() {
         if (category !== "All") {
           params.category = CATEGORY_API_MAP[category] ?? category.toLowerCase();
         }
+        if (userLoc.lat !== null && userLoc.lng !== null) {
+          params.lat = userLoc.lat;
+          params.lng = userLoc.lng;
+        }
 
         const res = await api.get<NewsItem[]>("/news/feed", { params });
         const items: NewsItem[] = res.data ?? [];
@@ -277,15 +307,16 @@ export default function NewsPage() {
         setLoadingMore(false);
       }
     },
-    []
+    [userLoc]
   );
 
   // Initial + category-change load
   useEffect(() => {
+    if (userLoc.lat === null || userLoc.lng === null) return;
     setPage(1);
     setNews([]);
     fetchNews(activeCategory, 1, false);
-  }, [activeCategory, fetchNews]);
+  }, [activeCategory, fetchNews, userLoc]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 

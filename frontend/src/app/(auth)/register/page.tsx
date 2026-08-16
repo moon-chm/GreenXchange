@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useReducedMotion, motion } from "framer-motion";
 import api from "@/lib/axios";
 import { useAuth } from "@/context/AuthContext";
-import LeafIcon from "@/components/icons/LeafIcon";
+import GxcLogo from "@/components/icons/GxcLogo";
+import { CheckCircle2, ArrowRight } from "lucide-react";
+import { extractErrorMessage } from "@/lib/utils";
 
 /* ─── Inline SVG leaf shape ─────────────────────────────────────── */
 function FloatingLeaf({
@@ -102,7 +104,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const [isRegistered, setIsRegistered] = useState(false);
   const reduced = useReducedMotion() ?? false;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -117,29 +119,12 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await api.post("/auth/register", { name, email, password });
-      // Auto-login after successful registration
-      const formData = new URLSearchParams();
-      formData.append("username", email);
-      formData.append("password", password);
-      const res = await api.post("/auth/login", formData, {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      });
-      await login(res.data.access_token);
-      // AuthContext.login already pushes to "/" via useRouter
+      setIsRegistered(true);
     } catch (err: any) {
-      if (err.response?.status === 409) {
-        setError("An account with this email already exists.");
-      } else if (err.response?.status === 422) {
-        const detail = err.response.data?.detail;
-        if (Array.isArray(detail) && detail.length > 0) {
-          setError(detail[0]?.msg || "Please check your details and try again.");
-        } else {
-          setError("Please check your details and try again.");
-        }
+      if (err.response?.status === 400 || err.response?.status === 409) {
+        setError(err.response?.data?.detail || "An account with this email already exists.");
       } else {
-        setError(
-          err.response?.data?.detail || "Registration failed. Please try again."
-        );
+        setError(extractErrorMessage(err, "Registration failed. Please try again."));
       }
     } finally {
       setLoading(false);
@@ -178,10 +163,7 @@ export default function RegisterPage() {
           transition={reduced ? {} : { duration: 0.5, ease: "easeOut" }}
           className="flex items-center gap-3 mb-12"
         >
-          <LeafIcon size={36} className="text-sage" />
-          <span className="font-display text-2xl font-semibold text-parchment tracking-wide">
-            GreenXchange
-          </span>
+          <GxcLogo size={44} variant="full" dark={true} />
         </motion.div>
 
         {/* Quote */}
@@ -208,22 +190,51 @@ export default function RegisterPage() {
       <div className="flex-1 bg-parchment flex flex-col items-center justify-center px-6 py-16 min-h-screen">
         {/* Mobile logo */}
         <div className="flex lg:hidden items-center gap-2 mb-10">
-          <LeafIcon size={28} className="text-fern" />
-          <span className="font-display text-xl font-semibold text-canopy tracking-wide">
-            GreenXchange
-          </span>
+          <GxcLogo size={30} variant="full" dark={false} />
         </div>
 
         <div className="w-full max-w-sm">
-          {/* Heading */}
-          <FormRow index={0} reduced={reduced}>
-            <h1 className="font-display text-3xl font-semibold text-canopy mb-1">
-              Create account
-            </h1>
-            <p className="font-sans text-sm text-canopy/60 mb-8">
-              Join GreenXchange and start making a difference
-            </p>
-          </FormRow>
+          {isRegistered ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-center space-y-6 bg-white/80 border border-sage/40 rounded-3xl p-8 shadow-card"
+            >
+              <div className="w-16 h-16 bg-fern/10 text-fern rounded-2xl flex items-center justify-center mx-auto border border-fern/20 shadow-xs">
+                <CheckCircle2 size={36} />
+              </div>
+
+              <div className="space-y-2">
+                <h2 className="text-2xl font-display font-bold text-canopy">Verify Your Email</h2>
+                <p className="text-sm text-canopy/70">
+                  We&apos;ve sent a verification link to <strong>{email}</strong>.
+                </p>
+                <p className="text-xs text-canopy/50 pt-2">
+                  Please click the link in the email to activate your account and begin earning GXC rewards!
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <Link
+                  href="/login"
+                  className="inline-flex items-center justify-center gap-2 w-full px-6 py-3 rounded-xl bg-fern hover:bg-forest text-parchment font-semibold shadow-button transition-all duration-200 text-sm"
+                >
+                  Go to Sign In
+                  <ArrowRight size={16} />
+                </Link>
+              </div>
+            </motion.div>
+          ) : (
+            <>
+              {/* Heading */}
+              <FormRow index={0} reduced={reduced}>
+                <h1 className="font-display text-3xl font-semibold text-canopy mb-1">
+                  Create account
+                </h1>
+                <p className="font-sans text-sm text-canopy/60 mb-8">
+                  Join GreenXchange and start making a difference
+                </p>
+              </FormRow>
 
           <form onSubmit={handleSubmit} noValidate className="space-y-5">
             {/* Full name */}
@@ -328,8 +339,11 @@ export default function RegisterPage() {
               </Link>
             </p>
           </FormRow>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 }
+

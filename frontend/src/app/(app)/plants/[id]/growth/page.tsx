@@ -6,6 +6,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import api from "@/lib/axios";
 import { Camera, MapPin, Upload, Loader2, CheckCircle, ArrowLeft } from "lucide-react";
 import { fadeUp } from "@/lib/motion";
+import { extractErrorMessage } from "@/lib/utils";
 
 export default function GrowthUpdatePage() {
   const { id } = useParams();
@@ -20,24 +21,35 @@ export default function GrowthUpdatePage() {
   const [success, setSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const requestLocation = useCallback(() => {
+    setLocStatus("Requesting location access...");
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-          setLocStatus("GPS verified");
+          setLocStatus("GPS Verified");
         },
         (err) => {
           console.error("GPS error:", err);
-          setLocStatus("Using default GPS");
-          setLocation({ lat: 28.6139, lng: 77.2090 });
-        }
+          setLocStatus("Permission denied or HTTP restricted. Tap to retry or use HTTPS.");
+          if (!location) {
+            setLocation({ lat: 28.6139, lng: 77.2090 });
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      setLocStatus("Geolocation not supported");
-      setLocation({ lat: 28.6139, lng: 77.2090 });
+      setLocStatus("Geolocation not supported by browser");
+      if (!location) {
+        setLocation({ lat: 28.6139, lng: 77.2090 });
+      }
     }
+  }, [location]);
+
+  useEffect(() => {
+    requestLocation();
   }, []);
+
 
   const handleFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -67,7 +79,7 @@ export default function GrowthUpdatePage() {
           router.push("/plants");
         }, 2200);
       } catch (err: any) {
-        alert(err.response?.data?.detail || "Failed to submit update");
+        alert(extractErrorMessage(err, "Failed to submit update"));
         setLoading(false);
       }
     },
@@ -168,25 +180,36 @@ export default function GrowthUpdatePage() {
           variants={containerAnim}
           initial={shouldReduce ? "visible" : "hidden"}
           animate="visible"
-          className="bg-white/80 border border-sage/40 rounded-2xl p-4 flex justify-between items-center shadow-sm"
+          className="bg-white/80 border border-sage/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-fern/10 flex items-center justify-center text-fern">
+            <div className="w-10 h-10 rounded-xl bg-fern/10 flex items-center justify-center text-fern shrink-0">
               <MapPin className="w-5 h-5" />
             </div>
             <div>
               <p className="text-xs font-semibold text-canopy uppercase tracking-wider">
                 Device Location
               </p>
-              <p className="text-xs text-canopy/50 mt-0.5">{locStatus}</p>
+              <p className="text-xs text-canopy/60 mt-0.5">{locStatus}</p>
             </div>
           </div>
-          {location && (
-            <div className="text-xs font-mono bg-sage/20 text-canopy px-2.5 py-1 rounded-lg">
-              {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
-            </div>
-          )}
+
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {location && (
+              <div className="text-xs font-mono bg-sage/20 text-canopy px-2.5 py-1.5 rounded-lg">
+                {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={requestLocation}
+              className="px-3 py-1.5 bg-fern/10 hover:bg-fern/20 text-fern rounded-lg text-xs font-semibold font-sans transition-colors"
+            >
+              Get GPS
+            </button>
+          </div>
         </motion.div>
+
 
         {/* Action Button */}
         <motion.button

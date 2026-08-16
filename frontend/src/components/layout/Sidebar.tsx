@@ -3,9 +3,9 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  LayoutDashboard, Leaf, Sparkles, Coins, Users, Newspaper, LogOut, ChevronRight
+  LayoutDashboard, Leaf, Sparkles, Coins, Users, Newspaper, LogOut, ChevronRight, Building2
 } from "lucide-react";
-import LeafIcon from "@/components/icons/LeafIcon";
+import GxcLogo from "@/components/icons/GxcLogo";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 
@@ -25,13 +25,8 @@ export default function Sidebar() {
   return (
     <aside className="hidden lg:flex flex-col w-60 min-h-screen bg-canopy fixed left-0 top-0 z-40">
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-5 py-6 border-b border-white/10">
-        <div className="w-8 h-8 rounded-lg bg-fern flex items-center justify-center">
-          <LeafIcon size={18} className="text-parchment" />
-        </div>
-        <span className="font-display text-lg font-semibold text-parchment tracking-tight">
-          GreenXchange
-        </span>
+      <div className="flex items-center px-5 py-5 border-b border-white/10">
+        <GxcLogo size={34} variant="full" dark={true} />
       </div>
 
       {/* Navigation */}
@@ -89,3 +84,4 @@ export default function Sidebar() {
     </aside>
   );
 }
+
