@@ -110,7 +110,6 @@ async def _seed_default_species():
             session.add(sp)
         await session.commit()
         logger.info(f"✅ Seeded {len(DEFAULT_SPECIES)} default plant species.")
-
 app = FastAPI(
     title="GreenXchange API",
     version="1.0.0",
