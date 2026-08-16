@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = False
     
     SECRET_KEY: str = "greenxchange-production-secret-key-change-later-32chars"
-    ALGORITHM: str = "RS256"
+    ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     

@@ -255,8 +255,11 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
         raise HTTPException(status_code=401, detail="Refresh token missing")
         
     try:
-        key = settings.jwt_public_key or settings.SECRET_KEY
-        payload = jwt.decode(refresh_token, key, algorithms=[settings.ALGORITHM, "RS256", "HS256"])
+        public_key = settings.jwt_public_key
+        if public_key and public_key.strip():
+            payload = jwt.decode(refresh_token, public_key, algorithms=["RS256"])
+        else:
+            payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=["HS256"])
         token_type = payload.get("type")
         if token_type != "refresh":
             raise HTTPException(status_code=401, detail="Invalid token type")

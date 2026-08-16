@@ -17,12 +17,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 def _decode_jwt(token: str) -> dict:
-    key = settings.jwt_public_key
-    algo = settings.ALGORITHM
-    if not key or not key.strip() or algo == "HS256":
-        key = settings.SECRET_KEY
-        algo = "HS256"
-    return jwt.decode(token, key, algorithms=[algo, "RS256", "HS256"])
+    public_key = settings.jwt_public_key
+    if public_key and public_key.strip():
+        # RSA keypair configured — use RS256
+        return jwt.decode(token, public_key, algorithms=["RS256"])
+    # No RSA keys — fall back to HS256 symmetric
+    return jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
 
 async def get_current_user(
     db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)
