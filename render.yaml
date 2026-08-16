@@ -1,0 +1,114 @@
+services:
+  # -------------------------------------------------------------
+  # 1. Next.js Frontend
+  # -------------------------------------------------------------
+  - type: web
+    name: greenxchange-frontend
+    env: node
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.10.0
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: greenxchange-backend
+          property: host
+
+  # -------------------------------------------------------------
+  # 2. FastAPI Backend
+  # -------------------------------------------------------------
+  - type: web
+    name: greenxchange-backend
+    env: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: greenxchange-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: greenxchange-redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: RS256
+      - key: EMAIL_PROVIDER
+        value: smtp
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        value: gogreenxchange.official@gmail.com
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM
+        value: GreenXchange <gogreenxchange.official@gmail.com>
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_CARE_API_KEY
+        sync: false
+      - key: JWT_PRIVATE_KEY_B64
+        sync: false
+      - key: JWT_PUBLIC_KEY_B64
+        sync: false
+
+  # -------------------------------------------------------------
+  # 3. Celery Background Worker
+  # -------------------------------------------------------------
+  - type: worker
+    name: greenxchange-worker
+    env: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A app.worker.celery_app.celery_app worker --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: greenxchange-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: greenxchange-redis
+          property: connectionString
+      - key: EMAIL_PROVIDER
+        value: smtp
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        value: gogreenxchange.official@gmail.com
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM
+        value: GreenXchange <gogreenxchange.official@gmail.com>
+      - key: JWT_PRIVATE_KEY_B64
+        sync: false
+      - key: JWT_PUBLIC_KEY_B64
+        sync: false
+
+# ---------------------------------------------------------------
+# Databases
+# ---------------------------------------------------------------
+databases:
+  - name: greenxchange-db
+    databaseName: greenxchange
+    user: greenxchange
+    plan: free
+    ipAllowList: []
+
+  - name: greenxchange-redis
+    plan: free
+    ipAllowList: []
