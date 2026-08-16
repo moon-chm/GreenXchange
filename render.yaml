@@ -99,16 +99,20 @@ services:
       - key: JWT_PUBLIC_KEY_B64
         sync: false
 
+  # -------------------------------------------------------------
+  # 4. Redis Service
+  # -------------------------------------------------------------
+  - type: redis
+    name: greenxchange-redis
+    plan: free
+    ipAllowList: []
+
 # ---------------------------------------------------------------
-# Databases
+# PostgreSQL Database
 # ---------------------------------------------------------------
 databases:
   - name: greenxchange-db
     databaseName: greenxchange
     user: greenxchange
-    plan: free
-    ipAllowList: []
-
-  - name: greenxchange-redis
     plan: free
     ipAllowList: []
