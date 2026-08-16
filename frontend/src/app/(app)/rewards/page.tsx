@@ -11,7 +11,7 @@ import TransactionTimeline, {
 import PendingPaymentApprovalModal, { PendingPaymentRequest } from "@/components/rewards/PendingPaymentApprovalModal";
 
 // ─── Types & Interfaces ───────────────────────────────────────────────────────
-const MAIN_TABS = ["Ledger & Activity", "Eco Marketplace", "Crypto Wallet Payout"] as const;
+const MAIN_TABS = ["Ledger & Activity", "Eco Marketplace"] as const;
 type MainTab = (typeof MAIN_TABS)[number];
 
 const FILTERS = ["All", "Plant Verified", "Bonus"] as const;
@@ -36,15 +36,6 @@ interface Redemption {
   created_at: string;
 }
 
-interface PayoutRequest {
-  id: string;
-  amount_gxc: number;
-  wallet_address: string;
-  tx_hash?: string;
-  status: string;
-  created_at: string;
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function RewardsPage() {
   const reduced = useReducedMotion();
@@ -61,7 +52,7 @@ export default function RewardsPage() {
   const [successMsg, setSuccessMsg]   = useState<string | null>(null);
   const [filter, setFilter]           = useState<Filter>("All");
 
-  // ── Marketplace & Payout Polish State ──
+  // ── Marketplace State ──
   const [items, setItems]               = useState<MarketplaceItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [myRedemptions, setMyRedemptions] = useState<Redemption[]>([]);
@@ -75,13 +66,6 @@ export default function RewardsPage() {
     setCopiedCode(text);
     setTimeout(() => setCopiedCode(null), 2000);
   };
-
-  // ── Payout & Org Payment Request State ──
-  const [payouts, setPayouts]           = useState<PayoutRequest[]>([]);
-  const [loadingPayouts, setLoadingPayouts] = useState(false);
-  const [walletAddr, setWalletAddr]     = useState("");
-  const [payoutAmount, setPayoutAmount] = useState<number>(50);
-  const [submittingPayout, setSubmittingPayout] = useState(false);
 
   const [pendingOrgRequests, setPendingOrgRequests] = useState<PendingPaymentRequest[]>([]);
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
@@ -136,19 +120,6 @@ export default function RewardsPage() {
     }
   }, []);
 
-  // ── Fetch Payout Requests ──
-  const fetchPayouts = useCallback(async () => {
-    setLoadingPayouts(true);
-    try {
-      const res = await api.get<PayoutRequest[]>("/rewards/payouts");
-      setPayouts(res.data);
-    } catch (err) {
-      console.error("Failed to fetch payouts", err);
-    } finally {
-      setLoadingPayouts(false);
-    }
-  }, []);
-
   useEffect(() => {
     fetchBalance();
     fetchHistory();
@@ -158,10 +129,8 @@ export default function RewardsPage() {
   useEffect(() => {
     if (activeTab === "Eco Marketplace") {
       fetchMarketplace();
-    } else if (activeTab === "Crypto Wallet Payout") {
-      fetchPayouts();
     }
-  }, [activeTab, fetchMarketplace, fetchPayouts]);
+  }, [activeTab, fetchMarketplace]);
 
   // ── Handle Redeem ──
   const handleRedeem = async (item: MarketplaceItem) => {
@@ -188,47 +157,6 @@ export default function RewardsPage() {
     }
   };
 
-  // ── Handle Payout ──
-  const handlePayoutSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccessMsg(null);
-
-    if (!walletAddr.startsWith("0x") || walletAddr.length !== 42) {
-      setError("Please enter a valid Web3 Ethereum/Polygon wallet address starting with 0x (42 characters).");
-      return;
-    }
-
-    if (payoutAmount < 50) {
-      setError("Minimum withdrawal threshold is 50 GXC.");
-      return;
-    }
-
-    if (balance < payoutAmount) {
-      setError(`Insufficient GXC balance. Available: ${balance} GXC.`);
-      return;
-    }
-
-    setSubmittingPayout(true);
-    try {
-      const res = await api.post<PayoutRequest>("/rewards/payout", {
-        amount_gxc: payoutAmount,
-        wallet_address: walletAddr,
-      });
-      setSuccessMsg(`Payout request of ${res.data.amount_gxc} GXC submitted successfully! Status: PENDING.`);
-      setWalletAddr("");
-      setPayoutAmount(50);
-      fetchBalance();
-      fetchHistory();
-      fetchPayouts();
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || "Payout submission failed.";
-      setError(msg);
-    } finally {
-      setSubmittingPayout(false);
-    }
-  };
-
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <motion.div
@@ -247,7 +175,7 @@ export default function RewardsPage() {
             GXC Token & Rewards Hub
           </h1>
           <p className="mt-2 text-canopy/60 font-sans text-sm">
-            Manage your append-only GXC ledger, redeem eco-vouchers, and request Web3 crypto payouts
+            Manage your append-only GXC ledger and redeem eco-friendly marketplace vouchers
           </p>
         </div>
 
@@ -517,119 +445,6 @@ export default function RewardsPage() {
               </div>
             </div>
           )}
-        </motion.div>
-      )}
-
-      {/* ── TAB 3: Crypto Wallet Payout ── */}
-      {activeTab === "Crypto Wallet Payout" && (
-        <motion.div variants={reduced ? undefined : fadeUp} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left: Request Form */}
-          <div className="lg:col-span-6 rounded-2xl border border-sage/40 bg-white/90 shadow-card p-6 space-y-6">
-            <div>
-              <h2 className="font-display text-2xl font-bold text-canopy">Web3 Crypto Payout</h2>
-              <p className="text-sm text-canopy/60 font-sans mt-1">Withdraw GXC tokens to your external Ethereum or Polygon wallet (Min 50 GXC).</p>
-            </div>
-
-            <form onSubmit={handlePayoutSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-canopy/80 font-sans mb-1 uppercase tracking-wider">Web3 Wallet Address</label>
-                <input
-                  type="text"
-                  placeholder="0x71C7656EC7ab88b098defB751B7401B5f6d8976F"
-                  value={walletAddr}
-                  onChange={(e) => setWalletAddr(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-sage/40 bg-parchment/20 text-canopy font-mono text-sm focus:outline-none focus:ring-2 focus:ring-fern/50"
-                  required
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-canopy/80 font-sans uppercase tracking-wider">Payout Amount (GXC)</label>
-                  <span className="text-[11px] text-canopy/50 font-sans">Available: {balance} GXC</span>
-                </div>
-                <input
-                  type="number"
-                  min={50}
-                  max={balance}
-                  value={payoutAmount}
-                  onChange={(e) => setPayoutAmount(Number(e.target.value))}
-                  className="w-full px-4 py-3 rounded-xl border border-sage/40 bg-parchment/20 text-canopy font-sans text-sm focus:outline-none focus:ring-2 focus:ring-fern/50"
-                  required
-                />
-                {/* Preset Amount Pills */}
-                <div className="flex gap-2 mt-2">
-                  {[50, 100, 250, balance].map((amt, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setPayoutAmount(Math.max(50, amt))}
-                      className="px-2.5 py-1 rounded-lg bg-sage/15 hover:bg-sage/30 text-canopy text-xs font-semibold font-sans transition-colors"
-                    >
-                      {amt === balance ? "Max" : `${amt} GXC`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingPayout || balance < 50}
-                className={[
-                  "w-full py-3.5 rounded-xl font-bold font-sans text-sm transition-colors focus:outline-none",
-                  balance >= 50 && !submittingPayout
-                    ? "bg-fern text-parchment hover:bg-fern/90 shadow-md"
-                    : "bg-sage/20 text-canopy/40 cursor-not-allowed",
-                ].join(" ")}
-              >
-                {submittingPayout ? "Submitting Request..." : "Request Payout"}
-              </button>
-            </form>
-          </div>
-
-          {/* Right: Payout History */}
-          <div className="lg:col-span-6 rounded-2xl border border-sage/40 bg-white/90 shadow-card p-6 space-y-4">
-            <h3 className="font-display text-xl font-bold text-canopy">Withdrawal Request History</h3>
-            {loadingPayouts ? (
-              <p className="text-sm font-sans text-canopy/60">Loading payout records...</p>
-            ) : payouts.length === 0 ? (
-              <p className="text-sm font-sans text-canopy/50 py-8 text-center border border-dashed border-sage/30 rounded-xl">No withdrawal requests submitted yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {payouts.map((p) => (
-                  <div key={p.id} className="p-4 rounded-xl bg-parchment/30 border border-sage/20 font-sans space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-canopy text-base">{p.amount_gxc} GXC</span>
-                      <span className={[
-                        "px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider",
-                        p.status === "COMPLETED" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                      ].join(" ")}>{p.status}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs font-mono text-canopy/70">
-                      <span className="truncate max-w-[200px] sm:max-w-[260px]">{p.wallet_address}</span>
-                      <button
-                        onClick={() => copyToClipboard(p.wallet_address)}
-                        className="px-2 py-0.5 rounded bg-sage/20 hover:bg-sage/30 text-canopy text-[10px] font-sans font-bold"
-                      >
-                        {copiedCode === p.wallet_address ? "Copied" : "Copy"}
-                      </button>
-                    </div>
-                    {p.tx_hash && (
-                      <a
-                        href={`https://polygonscan.com/tx/${p.tx_hash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[11px] text-fern font-semibold hover:underline"
-                      >
-                        View on Polygonscan ↗
-                      </a>
-                    )}
-                    <span className="text-[11px] text-canopy/40 block">{new Date(p.created_at).toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </motion.div>
       )}
 

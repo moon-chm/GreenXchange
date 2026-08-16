@@ -11,13 +11,11 @@ import RewardWidget from "@/components/dashboard/RewardWidget";
 import PlantPortfolioPanel from "@/components/dashboard/PlantPortfolioPanel";
 import DrivesPanel from "@/components/dashboard/DrivesPanel";
 import NewsFeedPanel from "@/components/dashboard/NewsFeedPanel";
-import CinematicIntroLoader from "@/components/shared/CinematicIntroLoader";
 import { fadeUp } from "@/lib/motion";
 
 export default function Dashboard() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showCinematic, setShowCinematic] = useState(false);
   const router = useRouter();
   const { user } = useAuth();
   const shouldReduce = useReducedMotion();
@@ -208,16 +206,6 @@ export default function Dashboard() {
           <div className="flex flex-wrap items-center gap-2">
             <motion.button
               whileTap={shouldReduce ? undefined : { scale: 0.97 }}
-              onClick={() => setShowCinematic(true)}
-              className="flex items-center gap-2 bg-gradient-to-r from-emerald-600/15 via-teal-500/15 to-sky-500/15 border border-emerald-500/30 hover:border-emerald-500 text-emerald-800 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-xs"
-              title="Experience the Canopy Metamorphosis & Air Purification Sequence"
-            >
-              <Sparkles size={14} className="text-emerald-600 animate-spin" />
-              <span>Experience Metamorphosis</span>
-            </motion.button>
-
-            <motion.button
-              whileTap={shouldReduce ? undefined : { scale: 0.97 }}
               onClick={() => router.push("/recommendations")}
               className="flex items-center gap-2 bg-sage/20 border border-sage/40 hover:border-fern/50 text-canopy hover:text-fern px-4 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-sm"
             >
@@ -236,15 +224,6 @@ export default function Dashboard() {
           </div>
         </div>
       </motion.header>
-
-      {/* Full-screen Cinematic Metamorphosis Loader Modal */}
-      {showCinematic && (
-        <CinematicIntroLoader
-          autoDismiss={false}
-          minDisplayTime={4500}
-          onComplete={() => setShowCinematic(false)}
-        />
-      )}
 
       {/* Grid container */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
