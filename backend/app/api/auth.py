@@ -246,7 +246,7 @@ async def login(
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400
     )
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "user": user}
 
 @router.post("/refresh", response_model=Token)
 async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)):

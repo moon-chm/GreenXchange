@@ -124,8 +124,7 @@ export default function LoginPage() {
       const res = await api.post("/auth/login", formData, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
-      await login(res.data.access_token);
-      // AuthContext.login already pushes to "/" via useRouter
+      await login(res.data.access_token, res.data.user ?? undefined);
     } catch (err: any) {
       if (err.response?.status === 403 && err.response?.data?.detail === "email_not_verified") {
         setIsUnverified(true);

@@ -1,9 +1,11 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, model_validator
 from uuid import UUID
+from typing import Optional
 
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    user: Optional["UserResponse"] = None
 
 class TokenPayload(BaseModel):
     sub: str | None = None
@@ -25,8 +27,8 @@ class UserResponse(BaseModel):
     role: str = "USER"
     is_org: bool = False
     email_verified: bool = False
-    verification_url: str | None = None
-    
+    verification_url: Optional[str] = None
+
     class Config:
         from_attributes = True
 

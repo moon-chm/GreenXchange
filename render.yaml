@@ -37,7 +37,9 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
-        value: RS256
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30
       - key: EMAIL_PROVIDER
         value: smtp
       - key: SMTP_HOST
@@ -47,16 +49,14 @@ services:
       - key: SMTP_USER
         value: gogreenxchange.official@gmail.com
       - key: SMTP_PASSWORD
-        sync: false
+        sync: false   # Set manually in Render dashboard
       - key: EMAIL_FROM
-        value: GreenXchange <gogreenxchange.official@gmail.com>
+        value: "GreenXchange <gogreenxchange.official@gmail.com>"
+      - key: FRONTEND_URL
+        value: https://greenxchange-frontend.onrender.com
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_CARE_API_KEY
-        sync: false
-      - key: JWT_PRIVATE_KEY_B64
-        sync: false
-      - key: JWT_PUBLIC_KEY_B64
         sync: false
 
   # -------------------------------------------------------------

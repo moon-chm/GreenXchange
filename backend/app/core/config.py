@@ -8,14 +8,14 @@ class Settings(BaseSettings):
     
     REDIS_URL: str = "redis://localhost:6379/0"
     
-    MINIO_ENDPOINT: str = "minio:9000"
+    MINIO_ENDPOINT: str = ""
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin123"
     MINIO_SECURE: bool = False
     
     SECRET_KEY: str = "greenxchange-production-secret-key-change-later-32chars"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     JWT_PRIVATE_KEY_B64: str = ""
@@ -23,12 +23,12 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_CARE_API_KEY: str = ""
     
-    # Email (SMTP / Resend)
+    # Email — credentials must be set via environment variables / Render dashboard
     EMAIL_PROVIDER: str = "smtp"
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
-    SMTP_USER: str = "gogreenxchange.official@gmail.com"
-    SMTP_PASSWORD: str = "nqyapxpfmrmpzbex"
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
     RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "GreenXchange <gogreenxchange.official@gmail.com>"
     FRONTEND_URL: str = "https://greenxchange-frontend.onrender.com"

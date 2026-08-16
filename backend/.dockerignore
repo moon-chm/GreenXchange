@@ -1,0 +1,25 @@
+# Docker ignore file — prevents sensitive and unnecessary files from entering production image
+.env
+.env.*
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+.git/
+.gitignore
+*.md
+tests/
+test_*.py
+scripts/
+certs/
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+alembic/versions/

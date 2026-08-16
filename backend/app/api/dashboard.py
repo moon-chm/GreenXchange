@@ -24,7 +24,17 @@ from app.core.config import settings
 from app.utils.geo import get_tile_id
 from app.services.environment import generate_environment_profile
 
-redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+redis_client = None
+try:
+    if settings.REDIS_URL:
+        redis_client = redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=3,
+            socket_timeout=3
+        )
+except Exception as _redis_init_err:
+    logger.warning(f"Dashboard Redis client init failed (non-fatal): {_redis_init_err}")
 
 async def fetch_environment(lat, lng):
     tile_id = get_tile_id(lat, lng)
@@ -32,55 +42,58 @@ async def fetch_environment(lat, lng):
     
     # Check for live hardware reading first
     hardware_dict = None
-    try:
-        hw_raw = await redis_client.get("env:hardware:latest")
-        if hw_raw:
-            import json, time
-            hw_data = json.loads(hw_raw)
-            age = int(time.time()) - hw_data.get("timestamp", 0)
-            if age <= 300:
-                hardware_dict = {
-                    "connected": age <= 120,
-                    "device_id": hw_data.get("device_id", "Arduino Nano"),
-                    "aqi": hw_data.get("aqi", 30),
-                    "co2_ppm": hw_data.get("mq135_co2", 1.33),
-                    "co_ppm": hw_data.get("mq7_co", 2.63),
-                    "smoke_ppm": hw_data.get("mq2_smoke", 0.00),
-                    "co_aqi": hw_data.get("co_aqi", 30),
-                    "smoke_aqi": hw_data.get("smoke_aqi", 0),
-                    "air_quality_status": hw_data.get("air_quality_status", "GOOD"),
-                    "alert_level": hw_data.get("alert_level", 140),
-                    "buzzer_active": hw_data.get("buzzer_active", False),
-                    "timestamp": hw_data.get("timestamp")
-                }
-    except Exception as e:
-        logger.warning(f"Redis hardware lookup failed ({e})")
+    if redis_client:
+        try:
+            hw_raw = await redis_client.get("env:hardware:latest")
+            if hw_raw:
+                import json, time
+                hw_data = json.loads(hw_raw)
+                age = int(time.time()) - hw_data.get("timestamp", 0)
+                if age <= 300:
+                    hardware_dict = {
+                        "connected": age <= 120,
+                        "device_id": hw_data.get("device_id", "Arduino Nano"),
+                        "aqi": hw_data.get("aqi", 30),
+                        "co2_ppm": hw_data.get("mq135_co2", 1.33),
+                        "co_ppm": hw_data.get("mq7_co", 2.63),
+                        "smoke_ppm": hw_data.get("mq2_smoke", 0.00),
+                        "co_aqi": hw_data.get("co_aqi", 30),
+                        "smoke_aqi": hw_data.get("smoke_aqi", 0),
+                        "air_quality_status": hw_data.get("air_quality_status", "GOOD"),
+                        "alert_level": hw_data.get("alert_level", 140),
+                        "buzzer_active": hw_data.get("buzzer_active", False),
+                        "timestamp": hw_data.get("timestamp")
+                    }
+        except Exception as e:
+            logger.warning(f"Redis hardware lookup failed ({e})")
 
     base_env = None
-    try:
-        cached_data = await redis_client.get(cache_key)
-        if cached_data:
-            import json
-            profile = json.loads(cached_data)
-            weather = profile.get("weather", {})
-            air_quality = profile.get("air_quality", {})
-            base_env = {
-                "aqi": air_quality.get("aqi", 25),
-                "pm25": air_quality.get("pm25", 8.5),
-                "temperature": weather.get("temperature", 24.5),
-                "humidity": weather.get("humidity", 60)
-            }
-    except Exception as e:
-        logger.warning(f"Redis cache lookup failed for telemetry ({e})")
+    if redis_client:
+        try:
+            cached_data = await redis_client.get(cache_key)
+            if cached_data:
+                import json
+                profile = json.loads(cached_data)
+                weather = profile.get("weather", {})
+                air_quality = profile.get("air_quality", {})
+                base_env = {
+                    "aqi": air_quality.get("aqi", 25),
+                    "pm25": air_quality.get("pm25", 8.5),
+                    "temperature": weather.get("temperature", 24.5),
+                    "humidity": weather.get("humidity", 60)
+                }
+        except Exception as e:
+            logger.warning(f"Redis cache lookup failed for telemetry ({e})")
 
     if not base_env:
         # Call Open-Meteo service with fallback
         profile = await generate_environment_profile(lat, lng)
-        try:
-            import json
-            await redis_client.setex(cache_key, 600, json.dumps(profile))
-        except Exception:
-            pass
+        if redis_client:
+            try:
+                import json
+                await redis_client.setex(cache_key, 600, json.dumps(profile))
+            except Exception:
+                pass
 
         weather = profile.get("weather", {})
         air_quality = profile.get("air_quality", {})
