@@ -1,17 +1,17 @@
 "use client";
 
 /**
- * CinematicIntroLoader — "Field Notes" Full-Screen Botanical Metamorphosis
- * -----------------------------------------------------------------------
- * A full-screen procedural fractal tree that grows and fits perfectly inside
- * any viewport (desktop, laptop, tablet, mobile) without overflowing.
+ * CinematicIntroLoader — "Field Notes" Botanical Metamorphosis
+ * -----------------------------------------------------------
+ * A finely-proportioned botanical illustration plate inspired by classic
+ * natural history field guides (Ernst Haeckel / John James Audubon).
  *
  * Sequence:
- * 1. Roots anchor into the soil at the base of the frame.
- * 2. Trunk and boughs branch outward depth-by-depth across the screen.
- * 3. Hundreds of botanical leaves unfurl with delicate organic veins.
- * 4. Ambient canopy breathing breeze settles in.
- * 5. Iris transition closes and opens the login page directly.
+ * 1. Deep roots branch naturally into the soil.
+ * 2. Majestic trunk and curved boughs grow depth-by-depth.
+ * 3. Hundreds of delicate, realistic botanical leaves unfurl on the branch tips.
+ * 4. Gentle organic breeze sways foliage clusters.
+ * 5. Smooth iris circle transition directly reveals the login page.
  */
 
 import React, { useEffect, useMemo, useRef } from "react";
@@ -30,7 +30,7 @@ interface CinematicIntroLoaderProps {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Deterministic PRNG for SSR and client hydration consistency            */
+/* Deterministic PRNG for hydration consistency                           */
 /* ---------------------------------------------------------------------- */
 function mulberry32(seed: number) {
   let s = seed | 0;
@@ -105,7 +105,7 @@ function growBranches(opts: {
     width,
   });
 
-  if (depth >= Math.floor(maxDepth * 0.4) && rand() < 0.45) {
+  if (depth >= Math.floor(maxDepth * 0.4) && rand() < 0.5) {
     midAnchors.push({ x: x2, y: y2 });
   }
 
@@ -114,13 +114,13 @@ function growBranches(opts: {
     return;
   }
 
-  const children = depth < 2 ? 2 : rand() < 0.65 ? 2 : 3;
+  const children = depth < 2 ? 2 : rand() < 0.6 ? 2 : 3;
   for (let i = 0; i < children; i++) {
     const dir = i - (children - 1) / 2;
-    const spread = 18 + rand() * 22;
-    const childAngle = angle + dir * spread + (rand() - 0.5) * 10;
-    const childLength = length * (0.65 + rand() * 0.16);
-    const childWidth = Math.max(0.6, width * 0.66);
+    const spread = 18 + rand() * 20;
+    const childAngle = angle + dir * spread + (rand() - 0.5) * 12;
+    const childLength = length * (0.68 + rand() * 0.14);
+    const childWidth = Math.max(0.7, width * 0.65);
     growBranches({
       ...opts,
       x: x2,
@@ -134,8 +134,8 @@ function growBranches(opts: {
 }
 
 function barkTone(depth: number, isRoot: boolean) {
-  if (isRoot) return "#2f2a24";
-  const tones = ["#241f1a", "#332b23", "#443a2f", "#564a3b", "#6b5c48", "#7d6c54", "#8f7d63"];
+  if (isRoot) return "#2c251e";
+  const tones = ["#231d17", "#322920", "#42362b", "#534537", "#685746", "#7c6853", "#8e7861"];
   return tones[Math.min(depth, tones.length - 1)];
 }
 
@@ -152,24 +152,24 @@ interface LeafDatum {
 }
 
 const TONE_FILL: Record<Tone, string> = {
-  green: "#6f9152",
-  brightGreen: "#93b565",
-  emerald: "#4a7c3b",
-  gold: "#c99a3b",
-  shadow: "#3d4a34",
+  green: "#5a8247",
+  brightGreen: "#7cae52",
+  emerald: "#3d6c38",
+  gold: "#c59838",
+  shadow: "#2f4029",
 };
 
-// 1000x650 coordinate space perfectly matches standard 16:9 / 16:10 screens
+// 1000x700 coordinate box perfectly frames a majestic tree
 const VIEW_W = 1000;
-const VIEW_H = 650;
-const GROUND_Y = 590;
+const VIEW_H = 700;
+const GROUND_Y = 620;
 const TRUNK_X = 500;
 
 export default function CinematicIntroLoader({
   onComplete,
   autoDismiss = true,
   minDisplayTime = 4200,
-  title = "Rooted",
+  title = "GreenXchange",
 }: CinematicIntroLoaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -183,7 +183,7 @@ export default function CinematicIntroLoader({
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  /* ---- Grow the tree canopy + roots once deterministically ---- */
+  /* ---- Grow the botanical canopy + roots once deterministically ---- */
   const CANOPY_MAX_DEPTH = 6;
   const { branchSegments, rootSegments, leaves, anchorPoints } = useMemo(() => {
     const rand = mulberry32(20260817);
@@ -195,16 +195,16 @@ export default function CinematicIntroLoader({
       x: TRUNK_X,
       y: GROUND_Y - 8,
       angle: -90,
-      length: 190,
+      length: 180,
       depth: 0,
-      width: 10,
+      width: 11,
       maxDepth: CANOPY_MAX_DEPTH,
       rand,
       segments: canopySegments,
       tips,
       midAnchors,
-      minLength: 9,
-      maxSegments: 220,
+      minLength: 8,
+      maxSegments: 240,
     });
 
     const rootSegs: Segment[] = [];
@@ -213,25 +213,25 @@ export default function CinematicIntroLoader({
     const rootRand = mulberry32(864197253);
     growBranches({
       x: TRUNK_X,
-      y: GROUND_Y + 3,
+      y: GROUND_Y + 4,
       angle: 90,
-      length: 60,
+      length: 65,
       depth: 0,
-      width: 5.5,
+      width: 6,
       maxDepth: 3,
       rand: rootRand,
       segments: rootSegs,
       tips: rootTips,
       midAnchors: rootMid,
-      minLength: 12,
+      minLength: 10,
       maxSegments: 45,
     });
 
     const rawAnchors: Array<{ a: Anchor; count: number }> = [
-      ...tips.map((a) => ({ a, count: 3 })),
+      ...tips.map((a) => ({ a, count: 4 })),
       ...midAnchors.map((a) => ({ a, count: 2 })),
     ];
-    const MAX_ANCHORS = 140;
+    const MAX_ANCHORS = 150;
     const step = rawAnchors.length > MAX_ANCHORS ? rawAnchors.length / MAX_ANCHORS : 1;
     const anchors: Array<{ a: Anchor; count: number }> = [];
     for (let i = 0; i < rawAnchors.length; i += step) anchors.push(rawAnchors[Math.floor(i)]);
@@ -242,24 +242,24 @@ export default function CinematicIntroLoader({
       anchorPts.push(a);
       for (let i = 0; i < count; i++) {
         const ang = rand() * Math.PI * 2;
-        const r = 5 + rand() * 18;
+        const r = 4 + rand() * 16;
         const toneRoll = rand();
         const tone: Tone =
-          toneRoll < 0.42
+          toneRoll < 0.45
             ? "green"
-            : toneRoll < 0.7
+            : toneRoll < 0.72
             ? "brightGreen"
             : toneRoll < 0.85
             ? "emerald"
-            : toneRoll < 0.93
+            : toneRoll < 0.94
             ? "gold"
             : "shadow";
         leafList.push({
           id: `${ai}-${i}`,
           x: a.x + Math.cos(ang) * r,
-          y: a.y + Math.sin(ang) * r * 0.85,
+          y: a.y + Math.sin(ang) * r * 0.9,
           rot: rand() * 360,
-          scale: 0.65 + rand() * 0.55,
+          scale: 0.6 + rand() * 0.45,
           tone,
           variant: rand() < 0.55 ? "A" : "B",
           clusterId: ai,
@@ -337,10 +337,10 @@ export default function CinematicIntroLoader({
     const motes: Mote[] = Array.from({ length: MOTE_COUNT }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
-      vx: (Math.random() - 0.5) * 0.22,
-      vy: Math.random() * 0.14 + 0.04,
-      size: Math.random() * 1.3 + 0.5,
-      alpha: Math.random() * 0.3 + 0.12,
+      vx: (Math.random() - 0.5) * 0.2,
+      vy: Math.random() * 0.12 + 0.04,
+      size: Math.random() * 1.2 + 0.5,
+      alpha: Math.random() * 0.28 + 0.1,
       settled: false,
       flicker: Math.random() * Math.PI * 2,
     }));
@@ -355,8 +355,8 @@ export default function CinematicIntroLoader({
           m.flicker += 0.03;
           if (!m.settled && bloomAmt > 0.7 && Math.random() < 0.02) {
             m.settled = true;
-            m.vy = -(Math.random() * 0.2 + 0.05);
-            m.vx = (Math.random() - 0.5) * 0.16;
+            m.vy = -(Math.random() * 0.18 + 0.05);
+            m.vx = (Math.random() - 0.5) * 0.15;
           }
           m.x += m.vx;
           m.y += m.vy;
@@ -365,7 +365,7 @@ export default function CinematicIntroLoader({
           if (m.y < -4) m.y = height + 4;
           if (m.y > height + 4) m.y = -4;
           ctx.globalAlpha = m.alpha * (0.6 + 0.4 * Math.sin(m.flicker));
-          ctx.fillStyle = m.settled ? "#c99a3b" : "#3a332c";
+          ctx.fillStyle = m.settled ? "#c59838" : "#3a332c";
           ctx.fillRect(m.x, m.y, m.size, m.size);
         });
         ctx.globalAlpha = 1;
@@ -383,7 +383,7 @@ export default function CinematicIntroLoader({
     gsap.set(branchPaths, { strokeDashoffset: 100 });
     gsap.set(leafGroups, { scale: 0, opacity: 0, transformOrigin: "center" });
     gsap.set(bloomRef.current, { opacity: 0 });
-    gsap.set(captionRef.current, { opacity: 0, y: 8, letterSpacing: "0.5em" });
+    gsap.set(captionRef.current, { opacity: 0, y: 8, letterSpacing: "0.45em" });
     gsap.set(frameRef.current, { opacity: 0 });
 
     let swayTl: gsap.core.Timeline | null = null;
@@ -400,7 +400,7 @@ export default function CinematicIntroLoader({
         if (autoDismiss) {
           gsap.to(container, {
             opacity: 0,
-            duration: 0.5,
+            duration: 0.45,
             onComplete: () => onCompleteRef.current?.(),
           });
         }
@@ -423,7 +423,7 @@ export default function CinematicIntroLoader({
           swayTl?.kill();
           gsap.to(container, {
             "--iris": "0%",
-            duration: 0.9,
+            duration: 0.85,
             ease: "power3.inOut",
             onComplete: () => onCompleteRef.current?.(),
           } as gsap.TweenVars);
@@ -432,8 +432,8 @@ export default function CinematicIntroLoader({
     });
 
     // 1. Paper and letterpress frame reveal
-    tl.to(container, { "--paper-opacity": 1, duration: 0.16 * T } as gsap.TweenVars, 0);
-    tl.to(frameRef.current, { opacity: 1, duration: 0.3 * T }, 0.05 * T);
+    tl.to(container, { "--paper-opacity": 1, duration: 0.15 * T } as gsap.TweenVars, 0);
+    tl.to(frameRef.current, { opacity: 1, duration: 0.28 * T }, 0.05 * T);
 
     // 2. Roots draw into the ground
     tl.to(
@@ -450,7 +450,7 @@ export default function CinematicIntroLoader({
       const segs = branchPaths.filter((el) => el.getAttribute("data-depth") === String(d));
       if (segs.length > 0) {
         const segStart = growthStart + (d / CANOPY_MAX_DEPTH) * growthSpan;
-        const segDur = (growthSpan / CANOPY_MAX_DEPTH) * 1.5;
+        const segDur = (growthSpan / CANOPY_MAX_DEPTH) * 1.4;
         tl.to(
           segs,
           { strokeDashoffset: 0, duration: segDur, stagger: segDur * 0.1, ease: "power2.out" },
@@ -459,7 +459,7 @@ export default function CinematicIntroLoader({
       }
     }
 
-    // 4. Leaves unfurl in lush clusters with organic rotation wobble
+    // 4. Leaves unfurl in delicate organic clusters
     tl.to(
       leafGroups,
       {
@@ -474,7 +474,7 @@ export default function CinematicIntroLoader({
     );
 
     // 5. Warm golden canopy bloom
-    tl.to(bloomRef.current, { opacity: 0.55, duration: 0.16 * T, ease: "power1.out" }, 0.8 * T);
+    tl.to(bloomRef.current, { opacity: 0.5, duration: 0.16 * T, ease: "power1.out" }, 0.8 * T);
 
     // 6. Letterpress caption
     if (title) {
@@ -512,12 +512,11 @@ export default function CinematicIntroLoader({
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden select-none"
+      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden select-none bg-[#e8dec6]"
       style={
         {
           "--paper-opacity": 0,
           "--iris": "150%",
-          background: "#e7ddc6",
           clipPath: "circle(var(--iris) at 50% 50%)",
         } as React.CSSProperties
       }
@@ -529,7 +528,7 @@ export default function CinematicIntroLoader({
           opacity: "var(--paper-opacity)" as unknown as number,
           transition: "opacity 0.4s ease-out",
           background:
-            "radial-gradient(ellipse at 50% 45%, #f1e7cf 0%, #e7ddc3 55%, #d8caa8 100%)",
+            "radial-gradient(ellipse at 50% 45%, #f2e9d2 0%, #e8dec4 55%, #d5c5a2 100%)",
         }}
       />
 
@@ -553,39 +552,22 @@ export default function CinematicIntroLoader({
       {/* Warm bloom light behind canopy */}
       <div
         ref={bloomRef}
-        className="absolute top-[32%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full pointer-events-none z-10"
+        className="absolute top-[34%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] rounded-full pointer-events-none z-10"
         style={{
           background:
-            "radial-gradient(circle, rgba(147,181,101,0.32) 0%, rgba(201,154,59,0.18) 42%, transparent 72%)",
+            "radial-gradient(circle, rgba(147,181,101,0.3) 0%, rgba(201,154,59,0.16) 42%, transparent 72%)",
         }}
       />
 
-      {/* Full-Screen Botanical SVG perfectly proportioned & framed */}
+      {/* Botanical Tree SVG */}
       <div className="absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-8">
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           preserveAspectRatio="xMidYMid meet"
-          className="w-full h-full max-w-6xl max-h-screen object-contain"
+          className="w-full h-full max-w-5xl max-h-[92vh] object-contain"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <defs>
-            <symbol id="leafA" viewBox="-10 -26 20 30">
-              <path d="M0,2 C-7,-4 -7,-18 0,-26 C7,-18 7,-4 0,2 Z" />
-              <path d="M0,0 L0,-22" stroke="#00000030" strokeWidth="0.6" fill="none" />
-              <path
-                d="M0,-6 L-4,-11 M0,-11 L4,-16"
-                stroke="#00000022"
-                strokeWidth="0.5"
-                fill="none"
-              />
-            </symbol>
-            <symbol id="leafB" viewBox="-10 -24 20 28">
-              <path d="M0,3 C-8,-1 -8,-15 0,-23 C8,-15 8,-1 0,3 Z" />
-              <path d="M0,1 L0,-19" stroke="#00000028" strokeWidth="0.6" fill="none" />
-            </symbol>
-          </defs>
-
           {/* Roots */}
           <g fill="none" strokeLinecap="round">
             {rootSegments.map((s, i) => (
@@ -617,7 +599,7 @@ export default function CinematicIntroLoader({
             ))}
           </g>
 
-          {/* Botanical foliage clusters */}
+          {/* Botanical foliage clusters — delicately proportioned */}
           {clusters.map((cluster) => (
             <g
               key={cluster.id}
@@ -630,11 +612,40 @@ export default function CinematicIntroLoader({
                   className="leaf-pop"
                   transform={`translate(${(leaf.x - cluster.x).toFixed(1)} ${(
                     leaf.y - cluster.y
-                  ).toFixed(1)}) rotate(${leaf.rot.toFixed(0)})`}
+                  ).toFixed(1)}) rotate(${leaf.rot.toFixed(0)}) scale(${leaf.scale.toFixed(2)})`}
                 >
-                  <g transform={`scale(${leaf.scale.toFixed(2)})`}>
-                    <use href={`#leaf${leaf.variant}`} fill={TONE_FILL[leaf.tone]} />
-                  </g>
+                  {/* Leaf blade */}
+                  <path
+                    d={
+                      leaf.variant === "A"
+                        ? "M0,2 C-7,-4 -7,-18 0,-26 C7,-18 7,-4 0,2 Z"
+                        : "M0,3 C-8,-1 -8,-15 0,-23 C8,-15 8,-1 0,3 Z"
+                    }
+                    fill={TONE_FILL[leaf.tone]}
+                    stroke="#23301d"
+                    strokeWidth="0.5"
+                    strokeOpacity="0.45"
+                  />
+                  {/* Central vein */}
+                  <path
+                    d={leaf.variant === "A" ? "M0,0 L0,-22" : "M0,1 L0,-19"}
+                    stroke="#192415"
+                    strokeWidth="0.6"
+                    strokeOpacity="0.35"
+                    fill="none"
+                  />
+                  {/* Side veins */}
+                  <path
+                    d={
+                      leaf.variant === "A"
+                        ? "M0,-6 L-4,-10 M0,-11 L4,-15 M0,-16 L-3,-19"
+                        : "M0,-5 L-4,-9 M0,-10 L4,-14"
+                    }
+                    stroke="#192415"
+                    strokeWidth="0.45"
+                    strokeOpacity="0.25"
+                    fill="none"
+                  />
                 </g>
               ))}
             </g>
@@ -663,7 +674,7 @@ export default function CinematicIntroLoader({
       {title ? (
         <div
           ref={captionRef}
-          className="absolute bottom-[4%] left-1/2 -translate-x-1/2 z-30 text-center pointer-events-none"
+          className="absolute bottom-[3.5%] left-1/2 -translate-x-1/2 z-30 text-center pointer-events-none"
           style={{
             fontFamily: "Georgia, 'Times New Roman', serif",
             fontStyle: "italic",
