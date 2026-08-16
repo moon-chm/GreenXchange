@@ -68,6 +68,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
