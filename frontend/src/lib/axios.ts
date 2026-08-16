@@ -1,13 +1,11 @@
 import axios from 'axios';
 
 export const getBaseUrl = () => {
-  // If in browser, relative '/api' works with Next.js rewrites and eliminates CORS/network errors
-  if (typeof window !== 'undefined') {
-    return '/api';
-  }
-
   let url = process.env.NEXT_PUBLIC_API_URL;
-  if (!url) {
+  if (!url || url === '/api') {
+    if (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')) {
+      return 'https://greenxchange-backend.onrender.com/api';
+    }
     return '/api';
   }
   url = url.trim();
