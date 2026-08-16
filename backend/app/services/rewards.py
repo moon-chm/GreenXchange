@@ -10,6 +10,55 @@ import traceback
 
 REWARD_MIN_INTERVAL_HOURS = int(os.getenv("REWARD_MIN_INTERVAL_HOURS", "24"))
 
+async def credit_plant_registration_reward(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plant_id: uuid.UUID,
+    points: int = 50
+) -> bool:
+    """
+    Credits GXC coins when a user registers a new plant/tree.
+    Awards 50 GXC coins immediately and records an append-only RewardTransaction.
+    """
+    try:
+        # Check if already credited for this plant registration
+        existing_tx = await db.execute(
+            select(RewardTransaction).filter(
+                RewardTransaction.user_id == user_id,
+                RewardTransaction.plant_id == plant_id,
+                RewardTransaction.trigger_event == "PLANT_REGISTERED"
+            )
+        )
+        if existing_tx.scalar_one_or_none():
+            return False
+
+        # Fetch most recent balance snapshot for user
+        latest_bal_res = await db.execute(
+            select(RewardTransaction.balance_snapshot)
+            .filter(RewardTransaction.user_id == user_id)
+            .order_by(RewardTransaction.created_at.desc())
+            .limit(1)
+        )
+        current_balance = latest_bal_res.scalar_one_or_none() or 0
+        new_balance = current_balance + points
+
+        new_tx = RewardTransaction(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            plant_id=plant_id,
+            points=points,
+            trigger_event="PLANT_REGISTERED",
+            balance_snapshot=new_balance,
+        )
+        db.add(new_tx)
+        await db.commit()
+        return True
+    except Exception as e:
+        print(f"Error crediting plant registration reward: {e}")
+        traceback.print_exc()
+        await db.rollback()
+        return False
+
 async def credit_growth_update_reward(db: AsyncSession, user_id: uuid.UUID, plant_id: uuid.UUID) -> bool:
     """
     Credits a reward for a verified growth update.

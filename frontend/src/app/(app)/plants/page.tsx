@@ -91,7 +91,9 @@ export default function PlantsPage() {
 
   const sortedPlants = [...filteredPlants].sort((a, b) => {
     if (sortBy === "species") {
-      return a.species_name.localeCompare(b.species_name);
+      const nameA = a.common_name || a.species_name;
+      const nameB = b.common_name || b.species_name;
+      return nameA.localeCompare(nameB);
     }
     return new Date(b.updated_at || b.planting_date).getTime() - new Date(a.updated_at || a.planting_date).getTime();
   });
@@ -265,6 +267,8 @@ export default function PlantsPage() {
             Try Again
           </button>
         </div>
+      ) : viewMode === "map" ? (
+        <PlantMap myPlants={sortedPlants} onSelectPlant={handleOpenDetails} />
       ) : sortedPlants.length === 0 ? (
         <div className="rounded-2xl border border-sage/40 bg-white/80">
           <EmptyState
@@ -276,8 +280,6 @@ export default function PlantsPage() {
             }
           />
         </div>
-      ) : viewMode === "map" ? (
-        <PlantMap myPlants={sortedPlants} onSelectPlant={handleOpenDetails} />
       ) : (
 
         <AnimatePresence mode="popLayout">

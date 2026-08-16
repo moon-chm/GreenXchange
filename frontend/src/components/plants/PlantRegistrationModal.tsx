@@ -227,17 +227,15 @@ export default function PlantRegistrationModal({
     setIsSubmitting(true);
     setError(null);
     try {
-      // Use first available species as the DB species_id (required FK),
-      // and save the user-typed name as common_name
-      const speciesId = speciesList[0]?.id ?? "";
+      const speciesId = formData.species_id || speciesList[0]?.id;
 
       await api.post("/plants/register", {
-        species_id: speciesId,
-        common_name: customSpeciesName.trim() || undefined,
+        species_id: speciesId || undefined,
+        common_name: customSpeciesName.trim() || formData.common_name.trim() || undefined,
         lat: parseFloat(formData.latitude),
         lng: parseFloat(formData.longitude),
         planting_date: new Date(formData.planting_date).toISOString(),
-        space_type: formData.space_type,
+        space_type: formData.space_type || "indoor",
         image_url: formData.image_url || undefined,
         is_public_on_map: formData.is_public_on_map,
       });
@@ -378,13 +376,44 @@ export default function PlantRegistrationModal({
                       type="text"
                       value={customSpeciesName}
                       onChange={(e) => setCustomSpeciesName(e.target.value)}
-                      placeholder="e.g. Neem Tree, Tulsi, Snake Plant, Moringa…"
+                      placeholder="Type ANY plant: e.g. Mango, Tomato, Cactus, Rose, Neem…"
                       className={inputClass}
                       autoFocus
                     />
                     <p className="text-xs text-canopy/50 mt-1">
-                      Enter any plant name — common, local, or scientific.
+                      Type any plant name — tree, herb, vegetable, succulent, fruit, or flower.
                     </p>
+
+                    {/* Quick suggestions */}
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {[
+                        "Neem Tree",
+                        "Tulsi",
+                        "Money Plant",
+                        "Snake Plant",
+                        "Mango Tree",
+                        "Aloe Vera",
+                        "Rose",
+                        "Moringa",
+                        "Tomato",
+                        "Lemon Tree",
+                        "Jasmine",
+                        "Bamboo",
+                      ].map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setCustomSpeciesName(item)}
+                          className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
+                            customSpeciesName.toLowerCase() === item.toLowerCase()
+                              ? "bg-fern text-white border-fern"
+                              : "bg-white/80 text-canopy/70 border-sage/50 hover:border-fern hover:text-canopy"
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Optional nickname */}

@@ -37,6 +37,10 @@ def _format_plant_age(planting_date: datetime) -> tuple[int, str]:
             return delta_days, f"{years} yr{'s' if years != 1 else ''}, {rem_months} mo{'s' if rem_months != 1 else ''}"
         return delta_days, f"{years} year{'s' if years != 1 else ''}"
 
+from app.models.enums import ToxicityLevel, AllergenRisk, MaintenanceLevel, GrowthRate, SpaceType
+import logging
+logger = logging.getLogger(__name__)
+
 @router.post("/register", response_model=PlantRegistrationResponse)
 async def register_plant(
     req: PlantRegistrationRequest,
@@ -44,14 +48,57 @@ async def register_plant(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    await check_endpoint_rate_limit(request, "plant_register", max_requests=5, window_seconds=3600)
+    try:
+        await check_endpoint_rate_limit(request, "plant_register", max_requests=100, window_seconds=3600)
+    except Exception as e:
+        logger.warning(f"Rate limiter warning on plant register: {e}")
 
-    # Verify species exists
-    result = await db.execute(select(PlantSpecies).filter(PlantSpecies.id == uuid.UUID(req.species_id)))
-    species = result.scalars().first()
+    plant_name = (req.common_name or "").strip()
+
+    # 1. If species_id provided, check if it matches
+    if req.species_id and str(req.species_id).strip():
+        try:
+            species_uuid = uuid.UUID(str(req.species_id).strip())
+            result = await db.execute(select(PlantSpecies).filter(PlantSpecies.id == species_uuid))
+            species = result.scalars().first()
+        except (ValueError, TypeError):
+            pass
+
+    # 2. If no species found yet, try matching by common name (case-insensitive)
+    if not species and plant_name:
+        result = await db.execute(
+            select(PlantSpecies).filter(PlantSpecies.common_name.ilike(plant_name))
+        )
+        species = result.scalars().first()
+
+    # 3. If it's a new or custom plant, create a dedicated species record for it
     if not species:
-        raise HTTPException(status_code=404, detail="Species not found")
-        
+        final_name = plant_name if plant_name else "Custom Plant"
+        species = PlantSpecies(
+            id=uuid.uuid4(),
+            common_name=final_name,
+            scientific_name=f"{final_name} ({uuid.uuid4().hex[:6]})",
+            genus="Plantae",
+            family="Flora",
+            co2_absorption_rate=12.5,
+            pm25_absorption_rate=0.5,
+            voc_absorption_rate=0.4,
+            toxicity_level=ToxicityLevel.NONE,
+            allergen_risk=AllergenRisk.NONE,
+            maintenance_level=MaintenanceLevel.LOW,
+            growth_rate=GrowthRate.MODERATE,
+            space_type_compatibility=[
+                SpaceType.INDOOR,
+                SpaceType.OUTDOOR_BALCONY,
+                SpaceType.OUTDOOR_GARDEN,
+                SpaceType.PUBLIC_PARK,
+            ],
+            data_source="User-Registered Species",
+        )
+        db.add(species)
+        await db.commit()
+        await db.refresh(species)
+
     plant_uuid = uuid.uuid4()
     scan_id = generate_scan_id(plant_uuid)
     
@@ -70,9 +117,21 @@ async def register_plant(
         anchor_location=f'SRID=4326;POINT({req.lng} {req.lat})'
     )
     
-    db.add(plant)
-    await db.commit()
-    await db.refresh(plant)
+    try:
+        db.add(plant)
+        await db.commit()
+        await db.refresh(plant)
+    except Exception as e:
+        logger.error(f"Error saving plant: {e}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Failed to save plant. Please verify your coordinates and inputs.")
+
+    # Automatically award 50 GXC coins for registration!
+    try:
+        from app.services.rewards import credit_plant_registration_reward
+        await credit_plant_registration_reward(db, user_id=current_user.id, plant_id=plant.id, points=50)
+    except Exception as rew_err:
+        logger.warning(f"Plant reward crediting notice: {rew_err}")
     
     qr_b64 = generate_qr_code(scan_id)
     
@@ -118,8 +177,8 @@ async def get_my_plants(
             PlantPortfolioResponse(
                 id=str(plant.id),
                 scan_id=plant.scan_id,
-                species_name=plant.species.common_name if plant.species else "Unknown",
-                common_name=plant.common_name,
+                species_name=plant.species.common_name if plant.species else "Urban Plant",
+                common_name=plant.common_name or (plant.species.common_name if plant.species else "Urban Plant"),
                 planting_date=plant.planting_date,
                 space_type=plant.space_type,
                 lat=row.lat,
@@ -147,9 +206,9 @@ async def get_community_map_trees(
             func.ST_Y(Plant.registered_location).label("lat"),
             func.ST_X(Plant.registered_location).label("lng")
         )
-        .join(User, User.id == Plant.owner_id)
+        .outerjoin(User, User.id == Plant.owner_id)
         .options(selectinload(Plant.species), selectinload(Plant.growth_updates))
-        .filter(Plant.is_public_on_map == True)
+        .filter(Plant.is_public_on_map.isnot(False))
         .order_by(Plant.created_at.desc())
     )
     rows = result.all()

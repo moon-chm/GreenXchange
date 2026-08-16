@@ -180,6 +180,12 @@ export default function PlantMap({ myPlants, onSelectPlant }: PlantMapProps) {
     } else if (activeTrees.length === 1 && bounds.isValid()) {
       map.setView(bounds.getCenter(), 14);
     }
+
+    setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.invalidateSize();
+      }
+    }, 200);
   }, [activeTrees]);
 
   return (

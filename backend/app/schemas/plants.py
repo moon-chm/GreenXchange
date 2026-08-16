@@ -4,7 +4,7 @@ from datetime import datetime
 from app.models.enums import SpaceType
 
 class PlantRegistrationRequest(BaseModel):
-    species_id: str
+    species_id: Optional[str] = None
     common_name: Optional[str] = None
     lat: float
     lng: float
