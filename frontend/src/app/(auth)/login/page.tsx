@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useReducedMotion, motion } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/axios";
-import LeafIcon from "@/components/icons/LeafIcon";
+import GxcLogo from "@/components/icons/GxcLogo";
+import { extractErrorMessage } from "@/lib/utils";
 
 /* ─── Inline SVG leaf shape ─────────────────────────────────────── */
 function FloatingLeaf({
@@ -103,12 +104,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isUnverified, setIsUnverified] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
   const { login } = useAuth();
   const reduced = useReducedMotion() ?? false;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setIsUnverified(false);
+    setResendStatus(null);
     setLoading(true);
 
     try {
@@ -122,13 +127,27 @@ export default function LoginPage() {
       await login(res.data.access_token);
       // AuthContext.login already pushes to "/" via useRouter
     } catch (err: any) {
-      if (err.response?.status === 429) {
+      if (err.response?.status === 403 && err.response?.data?.detail === "email_not_verified") {
+        setIsUnverified(true);
+        setError("Your email address is not verified yet. Please check your inbox for the activation link.");
+      } else if (err.response?.status === 429) {
         setError("Too many failed attempts. Please try again later.");
       } else {
-        setError(err.response?.data?.detail || "Invalid email or password.");
+        setError(extractErrorMessage(err, "Invalid email or password."));
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email.trim()) return;
+    try {
+      setResendStatus("Sending...");
+      const res = await api.post("/auth/resend-verification", { email: email.trim() });
+      setResendStatus(res.data.message || "Verification link sent! Check your inbox.");
+    } catch (err: any) {
+      setResendStatus("Failed to resend verification link.");
     }
   };
 
@@ -164,10 +183,7 @@ export default function LoginPage() {
           transition={reduced ? {} : { duration: 0.5, ease: "easeOut" }}
           className="flex items-center gap-3 mb-12"
         >
-          <LeafIcon size={36} className="text-sage" />
-          <span className="font-display text-2xl font-semibold text-parchment tracking-wide">
-            GreenXchange
-          </span>
+          <GxcLogo size={44} variant="full" dark={true} />
         </motion.div>
 
         {/* Quote */}
@@ -194,10 +210,7 @@ export default function LoginPage() {
       <div className="flex-1 bg-parchment flex flex-col items-center justify-center px-6 py-16 min-h-screen">
         {/* Mobile logo */}
         <div className="flex lg:hidden items-center gap-2 mb-10">
-          <LeafIcon size={28} className="text-fern" />
-          <span className="font-display text-xl font-semibold text-canopy tracking-wide">
-            GreenXchange
-          </span>
+          <GxcLogo size={30} variant="full" dark={false} />
         </div>
 
         <div className="w-full max-w-sm">
@@ -234,12 +247,20 @@ export default function LoginPage() {
 
             {/* Password */}
             <FormRow index={2} reduced={reduced}>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-canopy mb-1.5"
-              >
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-canopy"
+                >
+                  Password
+                </label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-medium text-fern hover:text-forest transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <input
                 id="password"
                 type="password"
@@ -252,12 +273,28 @@ export default function LoginPage() {
               />
             </FormRow>
 
-            {/* Error */}
+            {/* Error / Unverified Notice */}
             {error && (
               <FormRow index={3} reduced={reduced}>
-                <p className="text-sm text-red-600 font-medium" role="alert">
-                  {error}
-                </p>
+                <div className="space-y-2">
+                  <p className="text-sm text-red-600 font-medium bg-red-50 border border-red-200 rounded-xl p-3" role="alert">
+                    {error}
+                  </p>
+                  {isUnverified && (
+                    <div className="text-center pt-1">
+                      <button
+                        type="button"
+                        onClick={handleResendVerification}
+                        className="text-xs font-semibold text-fern hover:underline"
+                      >
+                        Resend verification email to {email}
+                      </button>
+                      {resendStatus && (
+                        <p className="text-xs text-canopy/70 mt-1 font-medium">{resendStatus}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </FormRow>
             )}
 

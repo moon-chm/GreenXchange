@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, Float, text
+from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, Float, Boolean, text
 from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from geoalchemy2 import Geometry
 from app.models.base import Base
@@ -46,9 +46,16 @@ class Plant(Base):
     
     planting_date = Column(DateTime(timezone=True), nullable=False)
     space_type = Column(Enum(SpaceType), nullable=False)
+    image_url = Column(String, nullable=True)
+    is_public_on_map = Column(Boolean, default=True, nullable=False)
     
     created_at = Column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
 
-    from sqlalchemy.orm import relationship
+
+
+    from sqlalchemy.orm import relationship, foreign
     owner = relationship("User")
     species = relationship("PlantSpecies")
+    growth_updates = relationship("GrowthUpdate", primaryjoin="Plant.id == foreign(GrowthUpdate.plant_id)", order_by="GrowthUpdate.server_timestamp.desc()")
+
+

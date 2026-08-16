@@ -39,14 +39,16 @@ async def log_requests(request: Request, call_next):
     })
     return response
 
-# Configure CORS for Production Domains
+# Configure CORS for Local Network & Mobile & Production Domains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://greenxchange.local", "https://app.greenxchange.com", "http://localhost", "http://localhost:3000"],
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])

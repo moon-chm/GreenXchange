@@ -15,10 +15,12 @@ interface Plant {
   points_earned?: number;
   updated_at?: string;
   planting_date?: string;
+  image_url?: string;
 }
 
 interface PlantCardProps {
   plant: Plant;
+  onClick?: () => void;
 }
 
 function CoinsIcon({ size = 16 }: { size?: number }) {
@@ -60,7 +62,7 @@ function formatDate(dateString: string): string {
   }
 }
 
-export default function PlantCard({ plant }: PlantCardProps) {
+export default function PlantCard({ plant, onClick }: PlantCardProps) {
   const shouldReduceMotion = useReducedMotion();
 
   const cardVariants = shouldReduceMotion
@@ -81,6 +83,7 @@ export default function PlantCard({ plant }: PlantCardProps) {
     <motion.div
       variants={cardVariants}
       {...(hoverProps as any)}
+      onClick={onClick}
       className="relative rounded-2xl border border-sage/40 bg-white/80 backdrop-blur-sm shadow-card p-5 flex flex-col gap-3 cursor-pointer group"
     >
       {/* Status badge — absolute top-right */}
@@ -88,10 +91,22 @@ export default function PlantCard({ plant }: PlantCardProps) {
         <StatusBadge status={displayStatus} />
       </div>
 
-      {/* Leaf image placeholder */}
-      <div className="w-full h-32 bg-sage/15 rounded-xl flex items-center justify-center">
-        <LeafIcon size={40} className="text-sage" />
+      {/* Leaf image or uploaded plant photo */}
+      <div className="w-full h-36 bg-sage/15 rounded-xl overflow-hidden flex items-center justify-center border border-sage/20 shadow-inner">
+        {plant.image_url ? (
+          <img
+            src={plant.image_url}
+            alt={plant.species_name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            onError={(e) => {
+              (e.target as HTMLElement).style.display = "none";
+            }}
+          />
+        ) : (
+          <LeafIcon size={40} className="text-sage" />
+        )}
       </div>
+
 
       {/* Plant info */}
       <div className="flex flex-col gap-0.5 pr-20">
@@ -121,3 +136,4 @@ export default function PlantCard({ plant }: PlantCardProps) {
     </motion.div>
   );
 }
+

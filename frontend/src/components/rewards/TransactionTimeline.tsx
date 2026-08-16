@@ -42,26 +42,38 @@ function formatTime(iso: string): string {
  * Map a raw trigger_event value to the badge label shown in the UI.
  * Falls back to the raw string if no mapping exists.
  */
-function getTriggerLabel(event: string): string {
-  const map: Record<string, string> = {
-    plant_verified: "Plant Verified",
-    plant_registered: "Plant Registered",
-    bonus: "Bonus",
-    referral_bonus: "Referral Bonus",
-    milestone_bonus: "Milestone Bonus",
-    manual_credit: "Manual Credit",
+function getTriggerLabel(event: string): { label: string; isNegative: boolean } {
+  const map: Record<string, { label: string; isNegative: boolean }> = {
+    GROWTH_UPDATE_VERIFIED: { label: "Growth Photo Verified", isNegative: false },
+    REGISTRATION: { label: "Plant Registration Bonus", isNegative: false },
+    MARKETPLACE_REDEMPTION: { label: "Eco Voucher Purchase", isNegative: true },
+    CRYPTO_WALLET_PAYOUT_PENDING: { label: "Web3 Payout (Pending)", isNegative: true },
+    CRYPTO_WALLET_PAYOUT_COMPLETED: { label: "Web3 Payout (Confirmed)", isNegative: true },
+    plant_verified: { label: "Plant Verified", isNegative: false },
+    plant_registered: { label: "Plant Registered", isNegative: false },
+    bonus: { label: "Bonus", isNegative: false },
+    referral_bonus: { label: "Referral Bonus", isNegative: false },
+    milestone_bonus: { label: "Milestone Bonus", isNegative: false },
+    manual_credit: { label: "Manual Credit", isNegative: false },
   };
-  return map[event] ?? event.replace(/_/g, " ");
+  const match = map[event];
+  if (match) return match;
+
+  const isNeg = event.toLowerCase().includes("redemption") || event.toLowerCase().includes("payout");
+  return {
+    label: event.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    isNegative: isNeg
+  };
 }
 
 /**
  * Map a trigger event to a filter bucket.
  */
 function getFilterBucket(event: string): FilterType {
-  if (event.includes("bonus") || event === "referral_bonus" || event === "milestone_bonus") {
+  if (event.includes("bonus") || event === "referral_bonus" || event === "milestone_bonus" || event === "REGISTRATION") {
     return "Bonus";
   }
-  if (event === "plant_verified") {
+  if (event === "plant_verified" || event === "GROWTH_UPDATE_VERIFIED") {
     return "Plant Verified";
   }
   return "All";
@@ -135,52 +147,72 @@ export default function TransactionTimeline({
       />
 
       <div className="space-y-7">
-        {visible.map((tx, idx) => (
-          <motion.div
-            key={tx.id}
-            variants={reduced ? undefined : slideFromLeft}
-            className="relative group"
-          >
-            {/* Timeline dot */}
-            <div
-              className="absolute left-[-22px] top-1 w-3 h-3 rounded-full bg-fern border-2 border-parchment
-                         group-hover:scale-125 transition-transform duration-200"
-              aria-hidden
-            />
+        {visible.map((tx) => {
+          const { label, isNegative } = getTriggerLabel(tx.trigger_event);
+          const isDeduction = isNegative || tx.points < 0;
+          const displayPoints = Math.abs(tx.points);
 
-            {/* Card content */}
-            <div className="rounded-xl border border-sage/30 bg-white/60 backdrop-blur-sm p-4 shadow-sm
-                            hover:border-sage/60 hover:bg-white/80 transition-all duration-200">
-              <div className="flex items-start justify-between gap-3">
-                {/* Left: date + plant + event */}
-                <div className="min-w-0 space-y-1">
-                  <p className="text-xs text-canopy/50 font-sans tabular-nums">
-                    {formatDate(tx.created_at)}&nbsp;&middot;&nbsp;{formatTime(tx.created_at)}
-                  </p>
+          return (
+            <motion.div
+              key={tx.id}
+              variants={reduced ? undefined : slideFromLeft}
+              className="relative group"
+            >
+              {/* Timeline dot */}
+              <div
+                className={[
+                  "absolute left-[-22px] top-1 w-3 h-3 rounded-full border-2 border-parchment group-hover:scale-125 transition-transform duration-200",
+                  isDeduction ? "bg-amber-500" : "bg-fern"
+                ].join(" ")}
+                aria-hidden
+              />
 
-                  <p className="text-sm font-medium text-canopy font-sans truncate">
-                    {tx.plant_name ?? "GreenXchange Reward"}
-                  </p>
+              {/* Card content */}
+              <div className="rounded-xl border border-sage/30 bg-white/60 backdrop-blur-sm p-4 shadow-sm
+                              hover:border-sage/60 hover:bg-white/80 transition-all duration-200">
+                <div className="flex items-start justify-between gap-3">
+                  {/* Left: date + plant + event */}
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-xs text-canopy/50 font-sans tabular-nums">
+                      {formatDate(tx.created_at)}&nbsp;&middot;&nbsp;{formatTime(tx.created_at)}
+                    </p>
 
-                  {/* Trigger badge */}
-                  <span className="inline-block px-2 py-0.5 rounded-full bg-fern/10 text-fern text-xs font-medium font-sans">
-                    {getTriggerLabel(tx.trigger_event)}
-                  </span>
-                </div>
+                    <p className="text-sm font-medium text-canopy font-sans truncate">
+                      {tx.plant_name ?? label}
+                    </p>
 
-                {/* Right: points + running balance */}
-                <div className="flex flex-col items-end shrink-0 gap-1">
-                  <span className="text-base font-semibold text-fern font-sans tabular-nums">
-                    +{tx.points.toLocaleString()}
-                  </span>
-                  <span className="text-xs text-canopy/40 font-mono tabular-nums">
-                    ={tx.balance_snapshot.toLocaleString()} pts
-                  </span>
+                    {/* Trigger badge */}
+                    <span
+                      className={[
+                        "inline-block px-2 py-0.5 rounded-full text-xs font-semibold font-sans",
+                        isDeduction
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-fern/10 text-fern"
+                      ].join(" ")}
+                    >
+                      {label}
+                    </span>
+                  </div>
+
+                  {/* Right: points + running balance */}
+                  <div className="flex flex-col items-end shrink-0 gap-1">
+                    <span
+                      className={[
+                        "text-base font-bold font-sans tabular-nums",
+                        isDeduction ? "text-amber-700" : "text-fern"
+                      ].join(" ")}
+                    >
+                      {isDeduction ? "-" : "+"}{displayPoints.toLocaleString()} GXC
+                    </span>
+                    <span className="text-xs text-canopy/50 font-mono tabular-nums">
+                      Snapshot: {tx.balance_snapshot.toLocaleString()} GXC
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          );
+        })}
       </div>
     </motion.div>
   );

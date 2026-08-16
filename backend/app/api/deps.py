@@ -59,3 +59,22 @@ async def get_current_admin_user(current_user: User = Depends(get_current_user))
             detail="The user doesn't have enough privileges"
         )
     return current_user
+
+async def get_current_user_optional(
+    db: AsyncSession = Depends(get_db),
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False))
+) -> User | None:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.jwt_public_key, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if not user_id:
+            return None
+        user_uuid = uuid.UUID(user_id)
+        result = await db.execute(select(User).where(User.id == user_uuid))
+        return result.scalar_one_or_none()
+    except Exception:
+        return None
+
+

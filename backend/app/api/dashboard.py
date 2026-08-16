@@ -19,58 +19,122 @@ from app.schemas.dashboard import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+import redis.asyncio as redis
+from app.core.config import settings
+from app.utils.geo import get_tile_id
+from app.services.environment import generate_environment_profile
+
+redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
 async def fetch_environment(lat, lng):
-    # Call the external Open-Meteo API using httpx
-    import httpx
-    async with httpx.AsyncClient() as client:
-        # Air Quality
-        aqi_res = await client.get(
-            "https://air-quality-api.open-meteo.com/v1/air-quality",
-            params={
-                "latitude": lat,
-                "longitude": lng,
-                "current": "us_aqi,pm10,pm2_5",
-                "timezone": "auto"
+    tile_id = get_tile_id(lat, lng)
+    cache_key = f"env:profile:{tile_id}"
+    
+    # Check for live hardware reading first
+    hardware_dict = None
+    try:
+        hw_raw = await redis_client.get("env:hardware:latest")
+        if hw_raw:
+            import json, time
+            hw_data = json.loads(hw_raw)
+            age = int(time.time()) - hw_data.get("timestamp", 0)
+            if age <= 300:
+                hardware_dict = {
+                    "connected": age <= 120,
+                    "device_id": hw_data.get("device_id", "Arduino Nano"),
+                    "aqi": hw_data.get("aqi", 30),
+                    "co2_ppm": hw_data.get("mq135_co2", 1.33),
+                    "co_ppm": hw_data.get("mq7_co", 2.63),
+                    "smoke_ppm": hw_data.get("mq2_smoke", 0.00),
+                    "co_aqi": hw_data.get("co_aqi", 30),
+                    "smoke_aqi": hw_data.get("smoke_aqi", 0),
+                    "air_quality_status": hw_data.get("air_quality_status", "GOOD"),
+                    "alert_level": hw_data.get("alert_level", 140),
+                    "buzzer_active": hw_data.get("buzzer_active", False),
+                    "timestamp": hw_data.get("timestamp")
+                }
+    except Exception as e:
+        logger.warning(f"Redis hardware lookup failed ({e})")
+
+    base_env = None
+    try:
+        cached_data = await redis_client.get(cache_key)
+        if cached_data:
+            import json
+            profile = json.loads(cached_data)
+            weather = profile.get("weather", {})
+            air_quality = profile.get("air_quality", {})
+            base_env = {
+                "aqi": air_quality.get("aqi", 25),
+                "pm25": air_quality.get("pm25", 8.5),
+                "temperature": weather.get("temperature", 24.5),
+                "humidity": weather.get("humidity", 60)
             }
-        )
-        aqi_data = aqi_res.json()
-        
-        # Weather
-        weather_res = await client.get(
-            "https://api.open-meteo.com/v1/forecast",
-            params={
-                "latitude": lat,
-                "longitude": lng,
-                "current": "temperature_2m,relative_humidity_2m",
-                "timezone": "auto"
-            }
-        )
-        weather_data = weather_res.json()
-        
-    return {
-        "aqi": aqi_data["current"]["us_aqi"],
-        "temperature": weather_data["current"]["temperature_2m"],
-        "humidity": weather_data["current"]["relative_humidity_2m"]
-    }
+    except Exception as e:
+        logger.warning(f"Redis cache lookup failed for telemetry ({e})")
+
+    if not base_env:
+        # Call Open-Meteo service with fallback
+        profile = await generate_environment_profile(lat, lng)
+        try:
+            import json
+            await redis_client.setex(cache_key, 600, json.dumps(profile))
+        except Exception:
+            pass
+
+        weather = profile.get("weather", {})
+        air_quality = profile.get("air_quality", {})
+        base_env = {
+            "aqi": air_quality.get("aqi", 25),
+            "pm25": air_quality.get("pm25", 8.5),
+            "temperature": weather.get("temperature", 24.5),
+            "humidity": weather.get("humidity", 60)
+        }
+
+    # Override AQI if hardware telemetry is actively connected
+    if hardware_dict and hardware_dict.get("connected"):
+        base_env["aqi"] = hardware_dict["aqi"]
+
+    base_env["hardware"] = hardware_dict
+    return base_env
+
+from app.models.growth import GrowthUpdate
 
 async def fetch_plants(user_id, db):
     result = await db.execute(
-        select(Plant)
-        .options(selectinload(Plant.species))
+        select(
+            Plant,
+            func.ST_Y(Plant.registered_location).label("lat"),
+            func.ST_X(Plant.registered_location).label("lng")
+        )
+        .options(selectinload(Plant.species), selectinload(Plant.growth_updates))
         .filter(Plant.owner_id == user_id)
     )
-    plants = result.scalars().all()
-    return [
-        {
-            "id": str(p.id),
-            "scan_id": p.scan_id,
-            "species_name": p.species.common_name if p.species else "Unknown",
-            "common_name": p.common_name,
-            "planting_date": p.planting_date,
-            "space_type": p.space_type
-        }
-        for p in plants
-    ]
+    rows = result.all()
+
+    plants_data = []
+    for row in rows:
+        plant = row.Plant
+        latest_gu = plant.growth_updates[0] if (hasattr(plant, "growth_updates") and plant.growth_updates) else None
+        status_str = latest_gu.verification_status.value.lower() if latest_gu else "verified"
+
+        plants_data.append({
+            "id": str(plant.id),
+            "scan_id": plant.scan_id,
+            "species_name": plant.species.common_name if plant.species else "Unknown",
+            "common_name": plant.common_name,
+            "planting_date": plant.planting_date,
+            "space_type": plant.space_type,
+            "lat": row.lat,
+            "lng": row.lng,
+            "status": status_str,
+            "image_url": plant.image_url
+        })
+
+
+    return plants_data
+
+
 
 async def fetch_rewards(user_id, db):
     result = await db.execute(

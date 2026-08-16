@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import api from "@/lib/axios";
+import { extractErrorMessage } from "@/lib/utils";
+
+import { Camera, Sparkles, AlertCircle, Globe, Upload, Image as ImageIcon } from "lucide-react";
 
 interface PlantRegistrationModalProps {
   isOpen: boolean;
@@ -68,13 +71,19 @@ function XIcon({ size = 20 }: { size?: number }) {
 }
 
 interface FormData {
-  species_name: string;
-  species_description: string;
+  species_id: string;
+  common_name: string;
+  space_type: string;
+  planting_date: string;
   latitude: string;
   longitude: string;
+  image_url: string;
+  is_public_on_map: boolean;
 }
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 4;
+
+const OTHER_SPECIES_ID = "__other__";
 
 const labelClass = "block text-sm font-medium text-canopy mb-1.5";
 const inputClass =
@@ -92,20 +101,67 @@ export default function PlantRegistrationModal({
   const [error, setError] = useState<string | null>(null);
   const [isGpsLoading, setIsGpsLoading] = useState(false);
 
+  const [speciesList, setSpeciesList] = useState<any[]>([]);
+  const [loadingSpecies, setLoadingSpecies] = useState(false);
+  const [customSpeciesName, setCustomSpeciesName] = useState("");
+
   const [formData, setFormData] = useState<FormData>({
-    species_name: "",
-    species_description: "",
+    species_id: "",
+    common_name: "",
+    space_type: "indoor",
+    planting_date: new Date().toISOString().split("T")[0],
     latitude: "",
     longitude: "",
+    image_url: "",
+    is_public_on_map: true,
   });
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const fetchSpecies = async () => {
+      try {
+        setLoadingSpecies(true);
+        const res = await api.get("/plants/species");
+        const data = res.data ?? [];
+        setSpeciesList(data);
+        if (data.length > 0) {
+          setFormData((prev) => ({
+            ...prev,
+            species_id: data[0].id,
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to load species:", err);
+      } finally {
+        setLoadingSpecies(false);
+      }
+    };
+    fetchSpecies();
+  }, [isOpen]);
+
   const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       const { name, value } = e.target;
       setFormData((prev) => ({ ...prev, [name]: value }));
     },
     []
   );
+
+  const handleImageFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Image size must be less than 10MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      if (evt.target?.result) {
+        setFormData((prev) => ({ ...prev, image_url: evt.target!.result as string }));
+      }
+    };
+    reader.readAsDataURL(file);
+  }, []);
 
   const handleGpsAutoFill = useCallback(() => {
     if (!navigator.geolocation) {
@@ -123,22 +179,30 @@ export default function PlantRegistrationModal({
         }));
         setIsGpsLoading(false);
       },
-      () => {
-        setError("Unable to retrieve your location.");
+      (err) => {
+        console.warn("GPS auto-fill error:", err);
+        setError("Unable to retrieve GPS location. Ensure location permissions are granted.");
         setIsGpsLoading(false);
-      }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }, []);
 
   const handleNext = useCallback(() => {
     setError(null);
     if (step === 1) {
-      if (!formData.species_name.trim()) {
-        setError("Species name is required.");
+      if (!customSpeciesName.trim()) {
+        setError("Please enter your plant name.");
         return;
       }
     }
     if (step === 2) {
+      if (!formData.image_url) {
+        setError("Please upload or snap a photo of your plant.");
+        return;
+      }
+    }
+    if (step === 3) {
       if (!formData.latitude.trim() || !formData.longitude.trim()) {
         setError("Please provide both latitude and longitude.");
         return;
@@ -163,35 +227,47 @@ export default function PlantRegistrationModal({
     setIsSubmitting(true);
     setError(null);
     try {
+      // Use first available species as the DB species_id (required FK),
+      // and save the user-typed name as common_name
+      const speciesId = speciesList[0]?.id ?? "";
+
       await api.post("/plants/register", {
-        species_name: formData.species_name,
-        description: formData.species_description,
-        latitude: parseFloat(formData.latitude),
-        longitude: parseFloat(formData.longitude),
+        species_id: speciesId,
+        common_name: customSpeciesName.trim() || undefined,
+        lat: parseFloat(formData.latitude),
+        lng: parseFloat(formData.longitude),
+        planting_date: new Date(formData.planting_date).toISOString(),
+        space_type: formData.space_type,
+        image_url: formData.image_url || undefined,
+        is_public_on_map: formData.is_public_on_map,
       });
-      setStep(3);
+      setStep(4);
       onSuccess();
+
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        "Registration failed. Please try again.";
-      setError(msg);
+      setError(extractErrorMessage(err, "Registration failed. Please try again."));
     } finally {
       setIsSubmitting(false);
     }
-  }, [formData, onSuccess]);
+  }, [formData, customSpeciesName, speciesList, onSuccess]);
 
   const handleClose = useCallback(() => {
     setStep(1);
     setError(null);
+    setCustomSpeciesName("");
     setFormData({
-      species_name: "",
-      species_description: "",
+      species_id: speciesList.length > 0 ? speciesList[0].id : "",
+      common_name: "",
+      space_type: "indoor",
+      planting_date: new Date().toISOString().split("T")[0],
       latitude: "",
       longitude: "",
+      image_url: "",
+      is_public_on_map: true,
     });
     onClose();
-  }, [onClose]);
+  }, [onClose, speciesList]);
+
 
   const overlayAnim = shouldReduceMotion
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
@@ -264,7 +340,7 @@ export default function PlantRegistrationModal({
 
             {/* Step indicator */}
             <div className="flex items-center gap-0 mb-6">
-              {[1, 2, 3].map((s, idx) => (
+              {[1, 2, 3, 4].map((s, idx) => (
                 <div key={s} className="flex items-center flex-1 last:flex-none">
                   <div
                     className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors duration-200 shrink-0 ${
@@ -275,7 +351,7 @@ export default function PlantRegistrationModal({
                   >
                     {s}
                   </div>
-                  {idx < 2 && (
+                  {idx < 3 && (
                     <div className="flex-1 h-0.5 mx-1">
                       <div
                         className={`h-full transition-all duration-300 rounded-full ${
@@ -292,40 +368,120 @@ export default function PlantRegistrationModal({
             <AnimatePresence mode="wait">
               {step === 1 && (
                 <motion.div key="step1" {...(stepAnim as any)} className="flex flex-col gap-4">
+                  {/* Plant name — free-text input */}
                   <div>
-                    <label htmlFor="species_name" className={labelClass}>
-                      Species Name <span className="text-red-500">*</span>
+                    <label htmlFor="custom_species_name" className={labelClass}>
+                      Plant Name <span className="text-red-500">*</span>
                     </label>
                     <input
-                      id="species_name"
-                      name="species_name"
+                      id="custom_species_name"
                       type="text"
-                      value={formData.species_name}
-                      onChange={handleChange}
-                      placeholder="e.g. Sacred Fig"
+                      value={customSpeciesName}
+                      onChange={(e) => setCustomSpeciesName(e.target.value)}
+                      placeholder="e.g. Neem Tree, Tulsi, Snake Plant, Moringa…"
                       className={inputClass}
                       autoFocus
                     />
+                    <p className="text-xs text-canopy/50 mt-1">
+                      Enter any plant name — common, local, or scientific.
+                    </p>
                   </div>
+
+                  {/* Optional nickname */}
                   <div>
-                    <label htmlFor="species_description" className={labelClass}>
-                      Description
+                    <label htmlFor="common_name" className={labelClass}>
+                      Nickname <span className="text-canopy/40">(Optional)</span>
                     </label>
-                    <textarea
-                      id="species_description"
-                      name="species_description"
-                      value={formData.species_description}
+                    <input
+                      id="common_name"
+                      name="common_name"
+                      type="text"
+                      value={formData.common_name}
                       onChange={handleChange}
-                      placeholder="Describe the plant, its characteristics, or any notable features…"
-                      rows={4}
-                      className={`${inputClass} resize-none`}
+                      placeholder="e.g. My Balcony Neem, Office Snake Plant"
+                      className={inputClass}
                     />
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label htmlFor="space_type" className={labelClass}>
+                        Space Type
+                      </label>
+                      <select
+                        id="space_type"
+                        name="space_type"
+                        value={formData.space_type}
+                        onChange={handleChange as any}
+                        className={inputClass}
+                      >
+                        <option value="indoor">Indoor</option>
+                        <option value="outdoor_balcony">Outdoor Balcony</option>
+                        <option value="outdoor_garden">Outdoor Garden</option>
+                        <option value="public_park">Public Park</option>
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <label htmlFor="planting_date" className={labelClass}>
+                        Planting Date
+                      </label>
+                      <input
+                        id="planting_date"
+                        name="planting_date"
+                        type="date"
+                        value={formData.planting_date}
+                        onChange={handleChange}
+                        className={inputClass}
+                      />
+                    </div>
                   </div>
                 </motion.div>
               )}
 
               {step === 2 && (
                 <motion.div key="step2" {...(stepAnim as any)} className="flex flex-col gap-4">
+                  <label className={labelClass}>
+                    Plant Photo <span className="text-red-500">*</span>
+                  </label>
+                  <p className="text-xs text-canopy/60 font-sans -mt-1">
+                    Upload or snap a clear photo of your plant for AI verification & asset card display.
+                  </p>
+
+                  <div className="relative border-2 border-dashed border-sage/60 rounded-2xl p-6 bg-white/60 hover:bg-white/90 hover:border-fern/50 transition-all flex flex-col items-center justify-center gap-3 text-center cursor-pointer group">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageFileChange}
+                      className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                    />
+
+                    {formData.image_url ? (
+                      <div className="relative w-full h-44 rounded-xl overflow-hidden shadow-inner border border-sage/30">
+                        <img
+                          src={formData.image_url}
+                          alt="Plant Preview"
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-canopy/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-semibold">
+                          Click to Change Photo
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="w-12 h-12 rounded-2xl bg-fern/10 text-fern flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Camera size={26} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-canopy">Take Photo or Choose File</p>
+                          <p className="text-[11px] text-canopy/50 mt-0.5 font-sans">Supports JPG, PNG, WEBP up to 10MB</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {step === 3 && (
+                <motion.div key="step3" {...(stepAnim as any)} className="flex flex-col gap-4">
                   <div className="flex gap-3">
                     <div className="flex-1">
                       <label htmlFor="latitude" className={labelClass}>
@@ -369,26 +525,58 @@ export default function PlantRegistrationModal({
                     <MapPinIcon size={18} />
                     {isGpsLoading ? "Fetching location…" : "Auto-fill from GPS"}
                   </motion.button>
+
+                  {/* Public Community Map Opt-In */}
+                  <div className="p-4 rounded-2xl bg-white/80 border border-sage/60 shadow-xs flex items-start gap-3.5 mt-1 transition-all">
+                    <input
+                      type="checkbox"
+                      id="is_public_on_map"
+                      name="is_public_on_map"
+                      checked={formData.is_public_on_map}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, is_public_on_map: e.target.checked }))}
+                      className="mt-1 w-4 h-4 rounded text-fern focus:ring-fern accent-fern cursor-pointer"
+                    />
+                    <label htmlFor="is_public_on_map" className="flex-1 cursor-pointer select-none">
+                      <div className="flex items-center gap-2">
+                        <Globe size={15} className="text-fern" />
+                        <span className="text-sm font-semibold text-canopy">
+                          Display this tree on the Public Community Map
+                        </span>
+                      </div>
+                      <p className="text-xs text-canopy/60 mt-1 leading-relaxed">
+                        When enabled, other citizens across your city can discover this tree, its location, age, and your first name on the Community Canopy Map.
+                      </p>
+                    </label>
+                  </div>
                 </motion.div>
               )}
 
-              {step === 3 && (
+              {step === 4 && (
                 <motion.div
-                  key="step3"
+                  key="step4"
                   {...(stepAnim as any)}
                   className="flex flex-col items-center gap-4 py-4"
                 >
-                  {/* QR placeholder */}
-                  <div className="w-16 h-16 bg-fern rounded-xl flex items-center justify-center text-parchment">
-                    <QRIcon size={36} />
+                  {/* Photo & QR Confirmation */}
+                  <div className="flex items-center gap-4">
+                    {formData.image_url && (
+                      <div className="w-16 h-16 rounded-xl overflow-hidden border border-sage/30 shadow-sm">
+                        <img src={formData.image_url} alt="Plant" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                    <div className="w-16 h-16 bg-fern rounded-xl flex items-center justify-center text-parchment shadow-sm">
+                      <QRIcon size={36} />
+                    </div>
                   </div>
+
                   <div className="text-center">
                     <h3 className="font-display text-lg font-semibold text-canopy mb-1">
                       Plant Registered!
                     </h3>
                     <p className="text-sm text-canopy/60 max-w-xs">
-                      <span className="font-medium text-canopy">{formData.species_name}</span> has
-                      been submitted for verification. Your QR code will be generated shortly.
+                      <span className="font-medium text-canopy">
+                        {formData.common_name || speciesList.find((s) => s.id === formData.species_id)?.common_name || "Plant"}
+                      </span> has been submitted for verification. Your plant photo & passport are live.
                     </p>
                   </div>
                   <div className="text-xs font-mono text-canopy/40 bg-sage/10 px-3 py-1.5 rounded-lg">
@@ -411,7 +599,7 @@ export default function PlantRegistrationModal({
 
             {/* Footer buttons */}
             <div className="flex gap-3 mt-6">
-              {step < 3 && step > 1 && (
+              {step < 4 && step > 1 && (
                 <button
                   type="button"
                   onClick={() => {
@@ -424,7 +612,7 @@ export default function PlantRegistrationModal({
                 </button>
               )}
 
-              {step < 3 ? (
+              {step < 4 ? (
                 <motion.button
                   type="button"
                   onClick={handleNext}
@@ -432,7 +620,7 @@ export default function PlantRegistrationModal({
                   whileTap={shouldReduceMotion ? {} : { scale: 0.97 }}
                   className="flex-1 py-2.5 rounded-xl bg-fern hover:bg-forest text-parchment text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {step === 2
+                  {step === 3
                     ? isSubmitting
                       ? "Registering…"
                       : "Register Plant"
@@ -455,3 +643,4 @@ export default function PlantRegistrationModal({
     </AnimatePresence>
   );
 }
+

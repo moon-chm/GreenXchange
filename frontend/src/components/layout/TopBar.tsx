@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, LayoutDashboard, Leaf, Sparkles, Coins, Users, Newspaper, LogOut } from "lucide-react";
+import { Menu, X, LayoutDashboard, Leaf, Sparkles, Coins, Users, Newspaper, LogOut, Building2 } from "lucide-react";
 import LeafIcon from "@/components/icons/LeafIcon";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";

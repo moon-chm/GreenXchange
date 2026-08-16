@@ -2,7 +2,8 @@
 
 import { useReducedMotion, motion, useSpring, useMotionValue, useTransform } from "framer-motion";
 import { useEffect } from "react";
-import { Coins, TrendingUp, Leaf, Users } from "lucide-react";
+import Link from "next/link";
+import { Coins, TrendingUp, Leaf, Users, ArrowRight, ShoppingBag } from "lucide-react";
 import StaleIndicator from "@/components/shared/StaleIndicator";
 import { fadeUp } from "@/lib/motion";
 
@@ -28,7 +29,7 @@ interface RewardWidgetProps {
 }
 
 const RADIUS = 48;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS; // ≈ 301.6
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 const txIcon: Record<string, React.ReactNode> = {
   plant_registered: <Leaf size={12} />,
@@ -75,7 +76,6 @@ export default function RewardWidget({
   const level = data?.level ?? 1;
   const pct = Math.min(balance / threshold, 1);
 
-  // Animated stroke
   const mv = useMotionValue(CIRCUMFERENCE);
   const spring = useSpring(mv, { duration: 1400, bounce: 0 });
   const strokeDashoffset = useTransform(spring, (v) => v);
@@ -84,14 +84,13 @@ export default function RewardWidget({
     if (shouldReduce) {
       mv.set(CIRCUMFERENCE * (1 - pct));
     } else {
-      // Start from full offset (empty ring), animate to filled
       mv.set(CIRCUMFERENCE);
       const timeout = setTimeout(() => {
         spring.set(CIRCUMFERENCE * (1 - pct));
       }, 200);
       return () => clearTimeout(timeout);
     }
-  }, [pct, mv, spring, shouldReduce, CIRCUMFERENCE]);
+  }, [pct, mv, spring, shouldReduce]);
 
   if (loading) return <Skeleton />;
 
@@ -107,10 +106,15 @@ export default function RewardWidget({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Coins size={18} className="text-fern" />
-          <h2 className="font-display text-lg font-semibold text-canopy">
-            GXC Rewards
-          </h2>
+          <div className="w-8 h-8 rounded-xl bg-fern/10 text-fern flex items-center justify-center">
+            <Coins size={18} />
+          </div>
+          <div>
+            <h2 className="font-display text-lg font-semibold text-canopy leading-tight">
+              GXC Wallet & Rewards
+            </h2>
+            <p className="text-[10px] text-canopy/50">Carbon Token Balance</p>
+          </div>
         </div>
         {stale && (
           <span className="flex items-center gap-1 text-xs font-medium bg-amber-500/10 text-amber-700 px-2 py-1 rounded-lg border border-amber-400/30">
@@ -122,7 +126,7 @@ export default function RewardWidget({
       {stale && !data && <StaleIndicator label="Rewards data unavailable" />}
 
       {/* Ring */}
-      <div className="flex flex-col items-center gap-1 py-2">
+      <div className="flex flex-col items-center gap-1 py-1">
         <div className="relative w-32 h-32">
           <svg
             width="128"
@@ -131,7 +135,6 @@ export default function RewardWidget({
             className="-rotate-90"
             aria-hidden="true"
           >
-            {/* Track */}
             <circle
               cx="60"
               cy="60"
@@ -140,7 +143,6 @@ export default function RewardWidget({
               stroke="rgba(163,177,138,0.25)"
               strokeWidth="8"
             />
-            {/* Progress */}
             <motion.circle
               cx="60"
               cy="60"
@@ -154,31 +156,41 @@ export default function RewardWidget({
             />
           </svg>
 
-          {/* Center label */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center rotate-0">
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="font-display text-3xl font-bold text-canopy leading-none">
               {balance.toLocaleString()}
             </span>
-            <span className="text-[10px] text-canopy/50 uppercase tracking-widest mt-0.5">
-              pts
+            <span className="text-[10px] text-canopy/50 uppercase tracking-widest mt-0.5 font-semibold">
+              GXC PTS
             </span>
           </div>
         </div>
 
-        <p className="text-xs text-canopy/50 font-sans">
-          <span className="text-fern font-semibold">Level {level}</span>
-          &nbsp;·&nbsp;{(threshold - balance).toLocaleString()} to next
+        <div className="flex items-center gap-1.5 mt-1 bg-fern/10 border border-fern/20 px-3 py-1 rounded-full text-xs font-semibold text-fern">
+          <span>Level {level} Guardian</span>
+          <span className="text-canopy/40 font-normal">({Math.round(pct * 100)}%)</span>
+        </div>
+        <p className="text-[10px] text-canopy/50 font-sans mt-0.5">
+          {(threshold - balance).toLocaleString()} pts to next tier
         </p>
-        <p className="text-[10px] text-canopy/40 font-sans">GXC Points</p>
       </div>
+
+      {/* Redeem Store CTA */}
+      <Link
+        href="/rewards"
+        className="flex items-center justify-center gap-2 bg-fern hover:bg-forest text-parchment py-2.5 rounded-xl text-xs font-semibold transition-all shadow-md shadow-fern/20"
+      >
+        <ShoppingBag size={14} />
+        Redeem Rewards & Cashout
+      </Link>
 
       {/* Divider */}
       <div className="border-t border-sage/20" />
 
       {/* Recent transactions */}
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium text-canopy/50 uppercase tracking-wide">
-          Recent
+        <p className="text-xs font-semibold text-canopy/50 uppercase tracking-wider">
+          Recent Activity
         </p>
         {transactions.length === 0 ? (
           <p className="text-sm text-canopy/40 text-center py-2">
@@ -188,19 +200,19 @@ export default function RewardWidget({
           transactions.map((tx) => (
             <div
               key={tx.id}
-              className="flex items-center justify-between gap-2 bg-sage/5 rounded-xl px-3 py-2.5"
+              className="flex items-center justify-between gap-2 bg-sage/5 hover:bg-sage/10 rounded-xl px-3 py-2 transition-colors"
             >
               <div className="flex items-center gap-2 min-w-0">
                 <span className="flex-shrink-0 w-6 h-6 rounded-lg bg-fern/10 text-fern flex items-center justify-center">
                   {txIcon[tx.type] ?? txIcon.default}
                 </span>
-                <span className="text-xs text-canopy/80 truncate">
+                <span className="text-xs text-canopy/80 truncate font-medium">
                   {tx.description}
                 </span>
               </div>
               <div className="flex flex-col items-end flex-shrink-0">
                 <span
-                  className={`text-xs font-semibold font-mono ${txColor(tx.points)}`}
+                  className={`text-xs font-bold font-mono ${txColor(tx.points)}`}
                 >
                   {tx.points >= 0 ? "+" : ""}
                   {tx.points}
@@ -216,3 +228,4 @@ export default function RewardWidget({
     </motion.div>
   );
 }
+
