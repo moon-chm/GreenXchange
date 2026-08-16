@@ -265,6 +265,8 @@ export default function PlantsPage() {
             Try Again
           </button>
         </div>
+      ) : viewMode === "map" ? (
+        <PlantMap myPlants={sortedPlants} onSelectPlant={handleOpenDetails} />
       ) : sortedPlants.length === 0 ? (
         <div className="rounded-2xl border border-sage/40 bg-white/80">
           <EmptyState
@@ -276,8 +278,6 @@ export default function PlantsPage() {
             }
           />
         </div>
-      ) : viewMode === "map" ? (
-        <PlantMap myPlants={sortedPlants} onSelectPlant={handleOpenDetails} />
       ) : (
 
         <AnimatePresence mode="popLayout">

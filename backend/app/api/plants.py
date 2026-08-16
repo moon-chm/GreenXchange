@@ -125,6 +125,13 @@ async def register_plant(
         logger.error(f"Error saving plant: {e}", exc_info=True)
         await db.rollback()
         raise HTTPException(status_code=400, detail="Failed to save plant. Please verify your coordinates and inputs.")
+
+    # Automatically award 50 GXC coins for registration!
+    try:
+        from app.services.rewards import credit_plant_registration_reward
+        await credit_plant_registration_reward(db, user_id=current_user.id, plant_id=plant.id, points=50)
+    except Exception as rew_err:
+        logger.warning(f"Plant reward crediting notice: {rew_err}")
     
     qr_b64 = generate_qr_code(scan_id)
     
@@ -199,9 +206,9 @@ async def get_community_map_trees(
             func.ST_Y(Plant.registered_location).label("lat"),
             func.ST_X(Plant.registered_location).label("lng")
         )
-        .join(User, User.id == Plant.owner_id)
+        .outerjoin(User, User.id == Plant.owner_id)
         .options(selectinload(Plant.species), selectinload(Plant.growth_updates))
-        .filter(Plant.is_public_on_map == True)
+        .filter(Plant.is_public_on_map.isnot(False))
         .order_by(Plant.created_at.desc())
     )
     rows = result.all()
