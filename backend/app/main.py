@@ -1,7 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import uuid
 import logging
+import app.models  # Registers all models with Base.metadata
+from app.models.base import Base
+from app.db.session import engine
 from app.api import health, auth, users, environment, recommendations, plants, growth, rewards, drives, news, dashboard
 from app.core.logging import setup_logging
 
@@ -11,7 +15,23 @@ logger = logging.getLogger("backend")
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-app = FastAPI(title="GreenXchange API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure database tables are created on startup (essential for cloud databases)
+    try:
+        async with engine.begin() as conn:
+            try:
+                from sqlalchemy import text
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
+            except Exception as e:
+                logger.warning(f"PostGIS extension notice: {e}")
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("✅ Database tables verified and created successfully.")
+    except Exception as e:
+        logger.error(f"❌ Database table initialization error: {e}")
+    yield
+
+app = FastAPI(title="GreenXchange API", lifespan=lifespan)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
