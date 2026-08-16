@@ -227,17 +227,15 @@ export default function PlantRegistrationModal({
     setIsSubmitting(true);
     setError(null);
     try {
-      // Use first available species as the DB species_id (required FK),
-      // and save the user-typed name as common_name
-      const speciesId = speciesList[0]?.id ?? "";
+      const speciesId = formData.species_id || speciesList[0]?.id;
 
       await api.post("/plants/register", {
-        species_id: speciesId,
-        common_name: customSpeciesName.trim() || undefined,
+        species_id: speciesId || undefined,
+        common_name: customSpeciesName.trim() || formData.common_name.trim() || undefined,
         lat: parseFloat(formData.latitude),
         lng: parseFloat(formData.longitude),
         planting_date: new Date(formData.planting_date).toISOString(),
-        space_type: formData.space_type,
+        space_type: formData.space_type || "indoor",
         image_url: formData.image_url || undefined,
         is_public_on_map: formData.is_public_on_map,
       });
