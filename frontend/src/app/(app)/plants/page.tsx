@@ -91,7 +91,9 @@ export default function PlantsPage() {
 
   const sortedPlants = [...filteredPlants].sort((a, b) => {
     if (sortBy === "species") {
-      return a.species_name.localeCompare(b.species_name);
+      const nameA = a.common_name || a.species_name;
+      const nameB = b.common_name || b.species_name;
+      return nameA.localeCompare(nameB);
     }
     return new Date(b.updated_at || b.planting_date).getTime() - new Date(a.updated_at || a.planting_date).getTime();
   });

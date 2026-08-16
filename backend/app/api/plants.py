@@ -177,8 +177,8 @@ async def get_my_plants(
             PlantPortfolioResponse(
                 id=str(plant.id),
                 scan_id=plant.scan_id,
-                species_name=plant.species.common_name if plant.species else "Unknown",
-                common_name=plant.common_name,
+                species_name=plant.species.common_name if plant.species else "Urban Plant",
+                common_name=plant.common_name or (plant.species.common_name if plant.species else "Urban Plant"),
                 planting_date=plant.planting_date,
                 space_type=plant.space_type,
                 lat=row.lat,

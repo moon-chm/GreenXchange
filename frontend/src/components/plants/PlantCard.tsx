@@ -8,6 +8,7 @@ import LeafIcon from "@/components/icons/LeafIcon";
 interface Plant {
   id: string;
   species_name: string;
+  common_name?: string;
   scientific_name?: string;
   qr_scan_id?: string;
   scan_id?: string;
@@ -111,10 +112,13 @@ export default function PlantCard({ plant, onClick }: PlantCardProps) {
       {/* Plant info */}
       <div className="flex flex-col gap-0.5 pr-20">
         <h3 className="font-display text-lg font-semibold text-canopy leading-tight">
-          {plant.species_name}
+          {plant.common_name || plant.species_name}
         </h3>
+        {plant.species_name && plant.common_name && plant.species_name.toLowerCase() !== plant.common_name.toLowerCase() && (
+          <p className="text-xs text-canopy/60">{plant.species_name}</p>
+        )}
         {plant.scientific_name && (
-          <p className="italic text-sm text-canopy/60">{plant.scientific_name}</p>
+          <p className="italic text-xs text-canopy/50">{plant.scientific_name}</p>
         )}
       </div>
 
