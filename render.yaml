@@ -63,44 +63,7 @@ services:
         sync: false
 
   # -------------------------------------------------------------
-  # 3. Celery Background Worker
-  # -------------------------------------------------------------
-  - type: worker
-    name: greenxchange-worker
-    env: docker
-    plan: free
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    dockerCommand: celery -A app.worker.celery_app.celery_app worker --loglevel=info
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: greenxchange-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: greenxchange-redis
-          property: connectionString
-      - key: EMAIL_PROVIDER
-        value: smtp
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: 587
-      - key: SMTP_USER
-        value: gogreenxchange.official@gmail.com
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: EMAIL_FROM
-        value: GreenXchange <gogreenxchange.official@gmail.com>
-      - key: JWT_PRIVATE_KEY_B64
-        sync: false
-      - key: JWT_PUBLIC_KEY_B64
-        sync: false
-
-  # -------------------------------------------------------------
-  # 4. Redis Service
+  # 3. Redis Service
   # -------------------------------------------------------------
   - type: redis
     name: greenxchange-redis
