@@ -25,6 +25,7 @@ class UserResponse(BaseModel):
     role: str = "USER"
     is_org: bool = False
     email_verified: bool = False
+    verification_url: str | None = None
     
     class Config:
         from_attributes = True
@@ -39,4 +40,3 @@ class ResetPasswordRequest(BaseModel):
 class MessageResponse(BaseModel):
     message: str
     success: bool = True
-

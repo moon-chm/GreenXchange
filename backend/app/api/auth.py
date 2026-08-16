@@ -59,6 +59,9 @@ async def register(user_in: UserCreate, request: Request, background_tasks: Back
             await db.commit()
             await db.refresh(existing_user)
             
+            verification_url = f"{base_url}/verify-email?token={verification_token}"
+            existing_user.verification_url = verification_url
+            
             background_tasks.add_task(send_verification_email, existing_user.email, existing_user.name, verification_token, base_url)
             return existing_user
             
@@ -80,6 +83,9 @@ async def register(user_in: UserCreate, request: Request, background_tasks: Back
         db.add(user)
         await db.commit()
         await db.refresh(user)
+        
+        verification_url = f"{base_url}/verify-email?token={verification_token}"
+        user.verification_url = verification_url
     except HTTPException:
         raise
     except Exception as e:
