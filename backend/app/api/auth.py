@@ -2,7 +2,7 @@ import uuid
 import secrets
 import logging
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query, BackgroundTasks, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -37,7 +37,7 @@ def _get_request_base_url(request: Request) -> str:
     return settings.FRONTEND_URL.rstrip("/")
 
 @router.post("/register", response_model=UserResponse)
-async def register(user_in: UserCreate, request: Request, db: AsyncSession = Depends(get_db)):
+async def register(user_in: UserCreate, request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     clean_email = user_in.email.strip().lower()
     try:
         result = await db.execute(select(User).where(User.email == clean_email))
@@ -70,12 +70,8 @@ async def register(user_in: UserCreate, request: Request, db: AsyncSession = Dep
         logger.error(f"Error registering user '{clean_email}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
     
-    # Dispatch verification email
-    try:
-        await send_verification_email(user.email, user.name, verification_token, base_url)
-    except Exception as e:
-        logger.warning(f"Email dispatch note: {e}")
-        
+    # Non-blocking async background email dispatch
+    background_tasks.add_task(send_verification_email, user.email, user.name, verification_token, base_url)
     return user
 
 @router.get("/verify-email", response_model=MessageResponse)
@@ -105,7 +101,7 @@ async def verify_email(token: str = Query(...), db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
 
 @router.post("/resend-verification", response_model=MessageResponse)
-async def resend_verification(payload: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
+async def resend_verification(payload: ForgotPasswordRequest, request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     clean_email = payload.email.strip().lower()
     try:
         result = await db.execute(select(User).where(User.email == clean_email))
@@ -123,14 +119,14 @@ async def resend_verification(payload: ForgotPasswordRequest, request: Request, 
         await db.commit()
         
         base_url = _get_request_base_url(request)
-        await send_verification_email(user.email, user.name, token, base_url)
+        background_tasks.add_task(send_verification_email, user.email, user.name, token, base_url)
         return MessageResponse(message="A new verification link has been sent to your email address.")
     except Exception as e:
         logger.error(f"Resend verification error: {e}")
         return MessageResponse(message="If your account exists, a new verification link has been sent.")
 
 @router.post("/forgot-password", response_model=MessageResponse)
-async def forgot_password(payload: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
+async def forgot_password(payload: ForgotPasswordRequest, request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     clean_email = payload.email.strip().lower()
     try:
         result = await db.execute(select(User).where(User.email == clean_email))
@@ -145,7 +141,7 @@ async def forgot_password(payload: ForgotPasswordRequest, request: Request, db: 
         await db.commit()
         
         base_url = _get_request_base_url(request)
-        await send_password_reset_email(user.email, user.name, reset_token, base_url)
+        background_tasks.add_task(send_password_reset_email, user.email, user.name, reset_token, base_url)
         return MessageResponse(message="Password reset instructions have been sent to your email address.")
     except Exception as e:
         logger.error(f"Forgot password error: {e}")
@@ -191,7 +187,7 @@ async def login(
         user = result.scalar_one_or_none()
     except Exception as e:
         logger.error(f"DB error during login for '{clean_email}': {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail=f"Database error during login. Please try again.")
+        raise HTTPException(status_code=400, detail="Database error during login. Please try again.")
     
     if not user or not verify_password(form_data.password, user.password_hash):
         try:
