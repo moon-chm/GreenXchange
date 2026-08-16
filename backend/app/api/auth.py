@@ -39,15 +39,31 @@ def _get_request_base_url(request: Request) -> str:
 @router.post("/register", response_model=UserResponse)
 async def register(user_in: UserCreate, request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     clean_email = user_in.email.strip().lower()
+    base_url = _get_request_base_url(request)
+    now = datetime.now(timezone.utc)
+    
     try:
         result = await db.execute(select(User).where(User.email == clean_email))
-        if result.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Email already registered")
+        existing_user = result.scalar_one_or_none()
+        
+        if existing_user:
+            if existing_user.email_verified:
+                raise HTTPException(status_code=400, detail="Email already registered. Please sign in.")
+            
+            # Account was registered but unverified — update password and dispatch fresh verification link
+            existing_user.password_hash = get_password_hash(user_in.password)
+            existing_user.name = user_in.name
+            verification_token = secrets.token_urlsafe(32)
+            existing_user.email_verification_token = verification_token
+            existing_user.email_verification_expires_at = now + timedelta(hours=24)
+            await db.commit()
+            await db.refresh(existing_user)
+            
+            background_tasks.add_task(send_verification_email, existing_user.email, existing_user.name, verification_token, base_url)
+            return existing_user
             
         hashed_password = get_password_hash(user_in.password)
         verification_token = secrets.token_urlsafe(32)
-        now = datetime.now(timezone.utc)
-        base_url = _get_request_base_url(request)
         
         user = User(
             email=clean_email,
