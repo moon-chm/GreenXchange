@@ -1,17 +1,15 @@
 "use client";
 
 /**
- * CinematicIntroLoader — "Field Notes" Botanical Metamorphosis
- * -----------------------------------------------------------
- * A finely-proportioned botanical illustration plate inspired by classic
- * natural history field guides (Ernst Haeckel / John James Audubon).
- *
+ * CinematicIntroLoader — "Botanical Metamorphosis"
+ * ------------------------------------------------
  * Sequence:
  * 1. Deep roots branch naturally into the soil.
  * 2. Majestic trunk and curved boughs grow depth-by-depth.
- * 3. Hundreds of delicate, realistic botanical leaves unfurl on the branch tips.
- * 4. Gentle organic breeze sways foliage clusters.
- * 5. Smooth iris circle transition directly reveals the login page.
+ * 3. Delicate botanical leaves unfurl naturally on the tree branches.
+ * 4. Full-Screen Canopy Bloom: Lush botanical leaves surge outward from
+ *    the center and completely blanket the entire viewport.
+ * 5. Smooth immediate fade-out directly into the login screen.
  */
 
 import React, { useEffect, useMemo, useRef } from "react";
@@ -58,7 +56,7 @@ interface Anchor {
 function growBranches(opts: {
   x: number;
   y: number;
-  angle: number; // degrees, -90 = straight up
+  angle: number;
   length: number;
   depth: number;
   width: number;
@@ -139,7 +137,7 @@ function barkTone(depth: number, isRoot: boolean) {
   return tones[Math.min(depth, tones.length - 1)];
 }
 
-type Tone = "green" | "brightGreen" | "emerald" | "gold" | "shadow";
+type Tone = "green" | "brightGreen" | "emerald" | "gold" | "shadow" | "deepForest";
 interface LeafDatum {
   id: string;
   x: number;
@@ -151,15 +149,25 @@ interface LeafDatum {
   clusterId: number;
 }
 
+interface CoverLeaf {
+  id: string;
+  x: number;
+  y: number;
+  rot: number;
+  scale: number;
+  tone: Tone;
+  distFromCenter: number;
+}
+
 const TONE_FILL: Record<Tone, string> = {
   green: "#5a8247",
   brightGreen: "#7cae52",
   emerald: "#3d6c38",
   gold: "#c59838",
   shadow: "#2f4029",
+  deepForest: "#233d1e",
 };
 
-// 1000x700 coordinate box perfectly frames a majestic tree
 const VIEW_W = 1000;
 const VIEW_H = 700;
 const GROUND_Y = 620;
@@ -174,6 +182,7 @@ export default function CinematicIntroLoader({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const coverSvgRef = useRef<SVGSVGElement>(null);
   const bloomRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<SVGGElement>(null);
@@ -183,7 +192,7 @@ export default function CinematicIntroLoader({
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  /* ---- Grow the botanical canopy + roots once deterministically ---- */
+  /* ---- 1. Tree Branching & Initial Canopy ---- */
   const CANOPY_MAX_DEPTH = 6;
   const { branchSegments, rootSegments, leaves, anchorPoints } = useMemo(() => {
     const rand = mulberry32(20260817);
@@ -228,7 +237,7 @@ export default function CinematicIntroLoader({
     });
 
     const rawAnchors: Array<{ a: Anchor; count: number }> = [
-      ...tips.map((a) => ({ a, count: 4 })),
+      ...tips.map((a) => ({ a, count: 3 })),
       ...midAnchors.map((a) => ({ a, count: 2 })),
     ];
     const MAX_ANCHORS = 150;
@@ -270,9 +279,46 @@ export default function CinematicIntroLoader({
     return {
       branchSegments: canopySegments,
       rootSegments: rootSegs,
-      leaves: leafList.slice(0, 480),
+      leaves: leafList.slice(0, 420),
       anchorPoints: anchorPts,
     };
+  }, []);
+
+  /* ---- 2. Full-Screen Coverage Leaves (Blankets Entire Viewport at Climax) ---- */
+  const coverLeaves: CoverLeaf[] = useMemo(() => {
+    const rand = mulberry32(987654321);
+    const list: CoverLeaf[] = [];
+    const tones: Tone[] = ["green", "brightGreen", "emerald", "shadow", "deepForest"];
+
+    // Dense grid across [-100, 1100] x [-100, 1100] in 1000x1000 viewBox
+    const COLS = 13;
+    const ROWS = 13;
+    const stepX = 1200 / COLS;
+    const stepY = 1200 / ROWS;
+
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < ROWS; r++) {
+        const baseX = -100 + c * stepX + (rand() - 0.5) * (stepX * 0.8);
+        const baseY = -100 + r * stepY + (rand() - 0.5) * (stepY * 0.8);
+        const dx = baseX - 500;
+        const dy = baseY - 450;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        list.push({
+          id: `cov-${c}-${r}`,
+          x: baseX,
+          y: baseY,
+          rot: rand() * 360,
+          scale: 1.6 + rand() * 1.1, // large overlapping leaves
+          tone: tones[Math.floor(rand() * tones.length)],
+          distFromCenter: dist,
+        });
+      }
+    }
+
+    // Sort from center outward so the wave expands from the tree center to corners
+    list.sort((a, b) => a.distFromCenter - b.distFromCenter);
+    return list;
   }, []);
 
   const clusters = useMemo(() => {
@@ -291,7 +337,8 @@ export default function CinematicIntroLoader({
     const container = containerRef.current;
     const canvas = canvasRef.current;
     const svg = svgRef.current;
-    if (!container || !canvas || !svg) return;
+    const coverSvg = coverSvgRef.current;
+    if (!container || !canvas || !svg || !coverSvg) return;
 
     const reduceMotion =
       typeof window !== "undefined" &&
@@ -315,10 +362,6 @@ export default function CinematicIntroLoader({
 
     const handleResize = () => {
       sizeCanvas();
-      motes.forEach((m) => {
-        m.x = Math.min(m.x, width);
-        m.y = Math.min(m.y, height);
-      });
     };
     window.addEventListener("resize", handleResize);
 
@@ -375,36 +418,33 @@ export default function CinematicIntroLoader({
     render();
 
     const leafGroups = Array.from(svg.querySelectorAll<SVGGElement>(".leaf-pop"));
-    const clusterGroups = Array.from(svg.querySelectorAll<SVGGElement>(".leaf-cluster"));
     const rootPaths = Array.from(svg.querySelectorAll<SVGPathElement>(".root-line"));
     const branchPaths = Array.from(svg.querySelectorAll<SVGPathElement>(".branch-line"));
+    const coverLeafEls = Array.from(coverSvg.querySelectorAll<SVGGElement>(".cover-leaf-item"));
 
     gsap.set(rootPaths, { strokeDashoffset: 100 });
     gsap.set(branchPaths, { strokeDashoffset: 100 });
     gsap.set(leafGroups, { scale: 0, opacity: 0, transformOrigin: "center" });
+    gsap.set(coverLeafEls, { scale: 0, opacity: 0, transformOrigin: "center" });
     gsap.set(bloomRef.current, { opacity: 0 });
     gsap.set(captionRef.current, { opacity: 0, y: 8, letterSpacing: "0.45em" });
     gsap.set(frameRef.current, { opacity: 0 });
-
-    let swayTl: gsap.core.Timeline | null = null;
 
     if (reduceMotion) {
       gsap.set(rootPaths, { strokeDashoffset: 0 });
       gsap.set(branchPaths, { strokeDashoffset: 0 });
       gsap.set(leafGroups, { scale: 1, opacity: 1 });
-      gsap.set(bloomRef.current, { opacity: 0.5 });
-      gsap.set(captionRef.current, { opacity: 1, y: 0, letterSpacing: "0.18em" });
-      gsap.set(frameRef.current, { opacity: 1 });
+      gsap.set(coverLeafEls, { scale: 1, opacity: 1 });
       progressRef.current = 1;
       const t = setTimeout(() => {
         if (autoDismiss) {
           gsap.to(container, {
             opacity: 0,
-            duration: 0.45,
+            duration: 0.35,
             onComplete: () => onCompleteRef.current?.(),
           });
         }
-      }, Math.max(600, minDisplayTime * 0.4));
+      }, 500);
       return () => {
         clearTimeout(t);
         cancelAnimationFrame(raf);
@@ -420,94 +460,95 @@ export default function CinematicIntroLoader({
       },
       onComplete: () => {
         if (autoDismiss) {
-          swayTl?.kill();
+          // Direct smooth fade out into login page without delay
           gsap.to(container, {
-            "--iris": "0%",
-            duration: 0.85,
-            ease: "power3.inOut",
+            opacity: 0,
+            duration: 0.45,
+            ease: "power2.inOut",
             onComplete: () => onCompleteRef.current?.(),
-          } as gsap.TweenVars);
+          });
         }
       },
     });
 
     // 1. Paper and letterpress frame reveal
-    tl.to(container, { "--paper-opacity": 1, duration: 0.15 * T } as gsap.TweenVars, 0);
-    tl.to(frameRef.current, { opacity: 1, duration: 0.28 * T }, 0.05 * T);
+    tl.to(container, { "--paper-opacity": 1, duration: 0.12 * T } as gsap.TweenVars, 0);
+    tl.to(frameRef.current, { opacity: 1, duration: 0.22 * T }, 0.04 * T);
 
     // 2. Roots draw into the ground
     tl.to(
       rootPaths,
-      { strokeDashoffset: 0, duration: 0.2 * T, stagger: 0.015 * T, ease: "power2.inOut" },
-      0.05 * T
+      { strokeDashoffset: 0, duration: 0.18 * T, stagger: 0.012 * T, ease: "power2.inOut" },
+      0.04 * T
     );
 
     // 3. Branches draw outward depth by depth across the viewport
-    const growthStart = 0.1 * T;
-    const growthEnd = 0.6 * T;
+    const growthStart = 0.08 * T;
+    const growthEnd = 0.5 * T;
     const growthSpan = growthEnd - growthStart;
     for (let d = 0; d <= CANOPY_MAX_DEPTH; d++) {
       const segs = branchPaths.filter((el) => el.getAttribute("data-depth") === String(d));
       if (segs.length > 0) {
         const segStart = growthStart + (d / CANOPY_MAX_DEPTH) * growthSpan;
-        const segDur = (growthSpan / CANOPY_MAX_DEPTH) * 1.4;
+        const segDur = (growthSpan / CANOPY_MAX_DEPTH) * 1.3;
         tl.to(
           segs,
-          { strokeDashoffset: 0, duration: segDur, stagger: segDur * 0.1, ease: "power2.out" },
+          { strokeDashoffset: 0, duration: segDur, stagger: segDur * 0.08, ease: "power2.out" },
           segStart
         );
       }
     }
 
-    // 4. Leaves unfurl in delicate organic clusters
+    // 4. Initial tree leaves unfurl on the branches
     tl.to(
       leafGroups,
       {
         scale: 1,
         opacity: 1,
         rotation: (i: number) => `+=${((i * 37) % 13) - 6}`,
-        duration: 0.24 * T,
-        ease: "back.out(1.6)",
-        stagger: { amount: 0.26 * T, from: "random" },
+        duration: 0.2 * T,
+        ease: "back.out(1.5)",
+        stagger: { amount: 0.2 * T, from: "random" },
       },
-      0.58 * T
+      0.45 * T
     );
 
     // 5. Warm golden canopy bloom
-    tl.to(bloomRef.current, { opacity: 0.5, duration: 0.16 * T, ease: "power1.out" }, 0.8 * T);
+    tl.to(bloomRef.current, { opacity: 0.5, duration: 0.14 * T, ease: "power1.out" }, 0.55 * T);
 
     // 6. Letterpress caption
     if (title) {
       tl.to(
         captionRef.current,
-        { opacity: 1, y: 0, letterSpacing: "0.18em", duration: 0.16 * T, ease: "power2.out" },
-        0.86 * T
+        { opacity: 1, y: 0, letterSpacing: "0.18em", duration: 0.14 * T, ease: "power2.out" },
+        0.58 * T
       );
     }
 
-    // 7. Ambient wind breathing for foliage clusters
-    swayTl = gsap.timeline({ repeat: -1, yoyo: true, delay: 0.9 * T });
-    clusterGroups.forEach((g, i) => {
-      swayTl!.to(
-        g,
-        {
-          rotation: (i % 2 === 0 ? 1 : -1) * (1.2 + (i % 5) * 0.2),
-          transformOrigin: "center",
-          duration: 2.4 + (i % 7) * 0.35,
-          ease: "sine.inOut",
+    // 7. FINALE: Full-screen leaf surge covers the entire viewport in lush living greens
+    tl.to(
+      coverLeafEls,
+      {
+        scale: (i: number) => coverLeaves[i]?.scale || 1.8,
+        opacity: 1,
+        rotation: (i: number) => `+=${((i * 29) % 25) - 12}`,
+        duration: 0.32 * T,
+        ease: "power2.out",
+        stagger: {
+          amount: 0.28 * T,
+          from: "start", // expands outward from center to corners
         },
-        (i % 9) * 0.08
-      );
-    });
+      },
+      0.65 * T
+    );
 
     return () => {
       window.removeEventListener("resize", handleResize);
       cancelAnimationFrame(raf);
       tl.kill();
-      swayTl?.kill();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minDisplayTime, autoDismiss, leaves]);
+  }, [minDisplayTime, autoDismiss, leaves, coverLeaves]);
 
   return (
     <div
@@ -516,8 +557,6 @@ export default function CinematicIntroLoader({
       style={
         {
           "--paper-opacity": 0,
-          "--iris": "150%",
-          clipPath: "circle(var(--iris) at 50% 50%)",
         } as React.CSSProperties
       }
     >
@@ -599,7 +638,7 @@ export default function CinematicIntroLoader({
             ))}
           </g>
 
-          {/* Botanical foliage clusters — delicately proportioned */}
+          {/* Botanical foliage clusters on tree */}
           {clusters.map((cluster) => (
             <g
               key={cluster.id}
@@ -614,7 +653,6 @@ export default function CinematicIntroLoader({
                     leaf.y - cluster.y
                   ).toFixed(1)}) rotate(${leaf.rot.toFixed(0)}) scale(${leaf.scale.toFixed(2)})`}
                 >
-                  {/* Leaf blade */}
                   <path
                     d={
                       leaf.variant === "A"
@@ -626,7 +664,6 @@ export default function CinematicIntroLoader({
                     strokeWidth="0.5"
                     strokeOpacity="0.45"
                   />
-                  {/* Central vein */}
                   <path
                     d={leaf.variant === "A" ? "M0,0 L0,-22" : "M0,1 L0,-19"}
                     stroke="#192415"
@@ -634,7 +671,6 @@ export default function CinematicIntroLoader({
                     strokeOpacity="0.35"
                     fill="none"
                   />
-                  {/* Side veins */}
                   <path
                     d={
                       leaf.variant === "A"
@@ -687,6 +723,50 @@ export default function CinematicIntroLoader({
           {title}
         </div>
       ) : null}
+
+      {/* FINALE: Full-Screen Screen-Covering Botanical Leaf Blanket Layer */}
+      <div className="absolute inset-0 w-full h-full pointer-events-none z-40 overflow-hidden">
+        <svg
+          ref={coverSvgRef}
+          viewBox="0 0 1000 1000"
+          preserveAspectRatio="xMidYMid slice"
+          className="w-full h-full block"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {coverLeaves.map((leaf) => (
+            <g
+              key={leaf.id}
+              className="cover-leaf-item"
+              transform={`translate(${leaf.x.toFixed(1)} ${leaf.y.toFixed(1)}) rotate(${leaf.rot.toFixed(0)})`}
+            >
+              {/* Detailed botanical leaf blade for complete screen blanketing */}
+              <path
+                d="M0,8 C-35,-15 -35,-85 0,-120 C35,-85 35,-15 0,8 Z"
+                fill={TONE_FILL[leaf.tone]}
+                stroke="#1a2d15"
+                strokeWidth="1.2"
+                strokeOpacity="0.4"
+              />
+              {/* Leaf spine */}
+              <path
+                d="M0,6 L0,-112"
+                stroke="#121f0f"
+                strokeWidth="1.8"
+                strokeOpacity="0.35"
+                fill="none"
+              />
+              {/* Branching leaf veins */}
+              <path
+                d="M0,-25 L-22,-45 M0,-45 L22,-65 M0,-65 L-20,-85 M0,-85 L18,-102"
+                stroke="#121f0f"
+                strokeWidth="1.2"
+                strokeOpacity="0.25"
+                fill="none"
+              />
+            </g>
+          ))}
+        </svg>
+      </div>
     </div>
   );
 }
