@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uuid
 import logging
+import app.models  # Registers all models with Base.metadata
+from app.models.base import Base
+from app.db.session import engine
 from app.api import health, auth, users, environment, recommendations, plants, growth, rewards, drives, news, dashboard
 from app.core.logging import setup_logging
-from app.db.session import engine
-from app.db.base import Base
 
 setup_logging()
 logger = logging.getLogger("backend")
@@ -25,11 +26,6 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"PostGIS extension notice: {e}")
             await conn.run_sync(Base.metadata.create_all)
-            try:
-                from app.models.org_payments import OrganizationPaymentRequest
-                await conn.run_sync(OrganizationPaymentRequest.metadata.create_all)
-            except Exception:
-                pass
         logger.info("✅ Database tables verified and created successfully.")
     except Exception as e:
         logger.error(f"❌ Database table initialization error: {e}")
