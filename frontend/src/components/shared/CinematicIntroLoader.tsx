@@ -1,20 +1,18 @@
 "use client";
 
 /**
- * CinematicIntroLoader — "Field Notes"
- * ------------------------------------
- * A full-screen intro sequence styled as a botanical field-guide plate.
- * The tree is grown with a recursive branching function (fractal-tree recursion:
- * each branch spawns 2-3 children at a randomized divergence angle,
- * tapering ~30% shorter and thinner than its parent).
+ * CinematicIntroLoader — "Field Notes" Full-Screen Botanical Metamorphosis
+ * -----------------------------------------------------------------------
+ * An immersive, full-screen botanical plate where procedural branches and
+ * hundreds of hand-crafted botanical leaves unfurl across the ENTIRE viewport.
  *
  * Design notes:
- * - Palette: aged paper + warm charcoal ink for the structure, with living
- *   greens (moss / spring / shadow-olive) and subtle gold accents for the canopy.
- * - Foliage clusters grow at branch tips and along outer limbs.
- * - Multi-layer particle canvas with ink dust motes.
- * - An organic breathing wind sway keeps the canopy alive once grown.
- * - Smooth hardware-accelerated iris/fade transition on completion.
+ * - Full-screen SVG layout (1440x900 coordinate space, scaled seamlessly).
+ * - Fractal branching math spans from screen edge to screen edge.
+ * - Multi-toned living foliage palette (spring green, moss, bright emerald,
+ *   deep shadow olive, and golden accents) filling the whole display.
+ * - Natural wind breathing physics across all leaf clusters.
+ * - Hardware-accelerated exit transition.
  */
 
 import React, { useEffect, useMemo, useRef } from "react";
@@ -24,13 +22,11 @@ interface CinematicIntroLoaderProps {
   onComplete?: () => void;
   autoDismiss?: boolean;
   minDisplayTime?: number;
-  /** Small caption that letterpresses in under the plate. Pass "" to omit. */
   title?: string;
 }
 
 /* ---------------------------------------------------------------------- */
-/* Deterministic PRNG — leaf/branch scatter is identical on server &      */
-/* client, avoiding hydration mismatches from Math.random in render.      */
+/* Deterministic PRNG for SSR and client hydration consistency            */
 /* ---------------------------------------------------------------------- */
 function mulberry32(seed: number) {
   let s = seed | 0;
@@ -43,7 +39,7 @@ function mulberry32(seed: number) {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Recursive branch generator — fractal-tree mathematical recursion.      */
+/* Fractal branch recursive engine across wide 1440x900 viewport space    */
 /* ---------------------------------------------------------------------- */
 interface Segment {
   d: string;
@@ -95,7 +91,7 @@ function growBranches(opts: {
   const x2 = x + Math.cos(rad) * length;
   const y2 = y + Math.sin(rad) * length;
 
-  const bow = (rand() - 0.5) * length * 0.22;
+  const bow = (rand() - 0.5) * length * 0.24;
   const cx = (x + x2) / 2 + Math.cos(rad + Math.PI / 2) * bow;
   const cy = (y + y2) / 2 + Math.sin(rad + Math.PI / 2) * bow;
 
@@ -105,7 +101,7 @@ function growBranches(opts: {
     width,
   });
 
-  if (depth >= Math.floor(maxDepth * 0.45) && rand() < 0.4) {
+  if (depth >= Math.floor(maxDepth * 0.35) && rand() < 0.55) {
     midAnchors.push({ x: x2, y: y2 });
   }
 
@@ -114,13 +110,13 @@ function growBranches(opts: {
     return;
   }
 
-  const children = depth < 2 ? 2 : rand() < 0.68 ? 2 : 3;
+  const children = depth < 2 ? 3 : rand() < 0.5 ? 2 : 3;
   for (let i = 0; i < children; i++) {
     const dir = i - (children - 1) / 2;
-    const spread = 16 + rand() * 22;
-    const childAngle = angle + dir * spread + (rand() - 0.5) * 10;
-    const childLength = length * (0.64 + rand() * 0.18);
-    const childWidth = Math.max(0.6, width * 0.66);
+    const spread = 22 + rand() * 24;
+    const childAngle = angle + dir * spread + (rand() - 0.5) * 12;
+    const childLength = length * (0.68 + rand() * 0.16);
+    const childWidth = Math.max(0.7, width * 0.65);
     growBranches({
       ...opts,
       x: x2,
@@ -139,7 +135,7 @@ function barkTone(depth: number, isRoot: boolean) {
   return tones[Math.min(depth, tones.length - 1)];
 }
 
-type Tone = "green" | "brightGreen" | "gold" | "shadow";
+type Tone = "green" | "brightGreen" | "gold" | "shadow" | "emerald";
 interface LeafDatum {
   id: string;
   x: number;
@@ -152,14 +148,17 @@ interface LeafDatum {
 }
 
 const TONE_FILL: Record<Tone, string> = {
-  green: "#6f9152", // living spring green
-  brightGreen: "#93b565", // sunlit highlight
-  gold: "#c99a3b", // warm accent
-  shadow: "#3d4a34", // interior canopy depth
+  green: "#5a8247", // living woodland green
+  brightGreen: "#82b258", // sunlight canopy foliage
+  emerald: "#3d6e3c", // rich emerald
+  gold: "#c99a3b", // warm ochre accent
+  shadow: "#2b3b27", // deep depth shadow
 };
 
-const GROUND_Y = 452;
-const TRUNK_X = 250;
+const VIEW_W = 1440;
+const VIEW_H = 900;
+const GROUND_Y = 860;
+const TRUNK_X = 720;
 
 export default function CinematicIntroLoader({
   onComplete,
@@ -179,7 +178,7 @@ export default function CinematicIntroLoader({
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  /* ---- Grow the canopy + roots once, deterministically. ---- */
+  /* ---- Generate wide full-screen canopy & roots ---- */
   const CANOPY_MAX_DEPTH = 6;
   const { branchSegments, rootSegments, leaves, anchorPoints } = useMemo(() => {
     const rand = mulberry32(20260817);
@@ -189,18 +188,18 @@ export default function CinematicIntroLoader({
     const midAnchors: Anchor[] = [];
     growBranches({
       x: TRUNK_X,
-      y: GROUND_Y - 6,
+      y: GROUND_Y - 10,
       angle: -90,
-      length: 150,
+      length: 240,
       depth: 0,
-      width: 8,
+      width: 14,
       maxDepth: CANOPY_MAX_DEPTH,
       rand,
       segments: canopySegments,
       tips,
       midAnchors,
-      minLength: 7,
-      maxSegments: 190,
+      minLength: 12,
+      maxSegments: 320,
     });
 
     const rootSegs: Segment[] = [];
@@ -209,43 +208,43 @@ export default function CinematicIntroLoader({
     const rootRand = mulberry32(864197253);
     growBranches({
       x: TRUNK_X,
-      y: GROUND_Y + 2,
+      y: GROUND_Y + 4,
       angle: 90,
-      length: 55,
+      length: 90,
       depth: 0,
-      width: 4.5,
+      width: 7.5,
       maxDepth: 3,
       rand: rootRand,
       segments: rootSegs,
       tips: rootTips,
       midAnchors: rootMid,
-      minLength: 10,
-      maxSegments: 40,
+      minLength: 15,
+      maxSegments: 60,
     });
 
+    // Screen-filling leaf anchors
     const rawAnchors: Array<{ a: Anchor; count: number }> = [
-      ...tips.map((a) => ({ a, count: 3 })),
-      ...midAnchors.map((a) => ({ a, count: 2 })),
+      ...tips.map((a) => ({ a, count: 4 })),
+      ...midAnchors.map((a) => ({ a, count: 3 })),
     ];
-    const MAX_ANCHORS = 130;
-    const step = rawAnchors.length > MAX_ANCHORS ? rawAnchors.length / MAX_ANCHORS : 1;
-    const anchors: Array<{ a: Anchor; count: number }> = [];
-    for (let i = 0; i < rawAnchors.length; i += step) anchors.push(rawAnchors[Math.floor(i)]);
 
     const leafList: LeafDatum[] = [];
     const anchorPts: Anchor[] = [];
-    anchors.forEach(({ a, count }, ai) => {
+
+    rawAnchors.forEach(({ a, count }, ai) => {
       anchorPts.push(a);
       for (let i = 0; i < count; i++) {
         const ang = rand() * Math.PI * 2;
-        const r = 4 + rand() * 15;
+        const r = 8 + rand() * 32;
         const toneRoll = rand();
         const tone: Tone =
-          toneRoll < 0.46
+          toneRoll < 0.35
             ? "green"
-            : toneRoll < 0.72
+            : toneRoll < 0.6
             ? "brightGreen"
-            : toneRoll < 0.86
+            : toneRoll < 0.8
+            ? "emerald"
+            : toneRoll < 0.92
             ? "gold"
             : "shadow";
         leafList.push({
@@ -253,9 +252,9 @@ export default function CinematicIntroLoader({
           x: a.x + Math.cos(ang) * r,
           y: a.y + Math.sin(ang) * r * 0.85,
           rot: rand() * 360,
-          scale: 0.5 + rand() * 0.62,
+          scale: 0.85 + rand() * 0.9,
           tone,
-          variant: rand() < 0.6 ? "A" : "B",
+          variant: rand() < 0.55 ? "A" : "B",
           clusterId: ai,
         });
       }
@@ -264,7 +263,7 @@ export default function CinematicIntroLoader({
     return {
       branchSegments: canopySegments,
       rootSegments: rootSegs,
-      leaves: leafList.slice(0, 420),
+      leaves: leafList.slice(0, 680),
       anchorPoints: anchorPts,
     };
   }, []);
@@ -316,7 +315,7 @@ export default function CinematicIntroLoader({
     };
     window.addEventListener("resize", handleResize);
 
-    /* ---------------- Ink dust motes (ambient organic texture) ---------- */
+    /* ---------------- Ink dust motes canvas ---------------- */
     interface Mote {
       x: number;
       y: number;
@@ -327,14 +326,14 @@ export default function CinematicIntroLoader({
       settled: boolean;
       flicker: number;
     }
-    const MOTE_COUNT = 55;
+    const MOTE_COUNT = 75;
     const motes: Mote[] = Array.from({ length: MOTE_COUNT }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
-      vx: (Math.random() - 0.5) * 0.22,
-      vy: Math.random() * 0.14 + 0.04,
-      size: Math.random() * 1.2 + 0.5,
-      alpha: Math.random() * 0.3 + 0.12,
+      vx: (Math.random() - 0.5) * 0.25,
+      vy: Math.random() * 0.16 + 0.05,
+      size: Math.random() * 1.5 + 0.6,
+      alpha: Math.random() * 0.35 + 0.12,
       settled: false,
       flicker: Math.random() * Math.PI * 2,
     }));
@@ -349,8 +348,8 @@ export default function CinematicIntroLoader({
           m.flicker += 0.03;
           if (!m.settled && bloomAmt > 0.7 && Math.random() < 0.02) {
             m.settled = true;
-            m.vy = -(Math.random() * 0.2 + 0.05);
-            m.vx = (Math.random() - 0.5) * 0.16;
+            m.vy = -(Math.random() * 0.22 + 0.06);
+            m.vx = (Math.random() - 0.5) * 0.18;
           }
           m.x += m.vx;
           m.y += m.vy;
@@ -373,7 +372,6 @@ export default function CinematicIntroLoader({
     const rootPaths = Array.from(svg.querySelectorAll<SVGPathElement>(".root-line"));
     const branchPaths = Array.from(svg.querySelectorAll<SVGPathElement>(".branch-line"));
 
-    // Initial state: hide strokes and foliage
     gsap.set(rootPaths, { strokeDashoffset: 100 });
     gsap.set(branchPaths, { strokeDashoffset: 100 });
     gsap.set(leafGroups, { scale: 0, opacity: 0, transformOrigin: "center" });
@@ -387,7 +385,7 @@ export default function CinematicIntroLoader({
       gsap.set(rootPaths, { strokeDashoffset: 0 });
       gsap.set(branchPaths, { strokeDashoffset: 0 });
       gsap.set(leafGroups, { scale: 1, opacity: 1 });
-      gsap.set(bloomRef.current, { opacity: 0.5 });
+      gsap.set(bloomRef.current, { opacity: 0.6 });
       gsap.set(captionRef.current, { opacity: 1, y: 0, letterSpacing: "0.18em" });
       gsap.set(frameRef.current, { opacity: 1 });
       progressRef.current = 1;
@@ -417,9 +415,9 @@ export default function CinematicIntroLoader({
         if (autoDismiss) {
           activeTweens.forEach((tw) => tw.kill());
           gsap.to(container, {
-            clipPath: "circle(0% at 50% 44%)",
+            clipPath: "circle(0% at 50% 50%)",
             opacity: 0,
-            duration: 0.85,
+            duration: 0.9,
             ease: "power3.inOut",
             onComplete: () => onCompleteRef.current?.(),
           });
@@ -427,20 +425,20 @@ export default function CinematicIntroLoader({
       },
     });
 
-    // 1. Paper and letterpress frame reveal
-    tl.to(container, { "--paper-opacity": 1, duration: 0.16 * T } as gsap.TweenVars, 0);
-    tl.to(frameRef.current, { opacity: 1, duration: 0.3 * T }, 0.05 * T);
+    // 1. Paper and frame
+    tl.to(container, { "--paper-opacity": 1, duration: 0.15 * T } as gsap.TweenVars, 0);
+    tl.to(frameRef.current, { opacity: 1, duration: 0.28 * T }, 0.04 * T);
 
-    // 2. Roots shoot deep into the soil
+    // 2. Roots draw
     tl.to(
       rootPaths,
-      { strokeDashoffset: 0, duration: 0.2 * T, stagger: 0.015 * T, ease: "power2.inOut" },
+      { strokeDashoffset: 0, duration: 0.2 * T, stagger: 0.012 * T, ease: "power2.inOut" },
       0.05 * T
     );
 
-    // 3. Branches draw outward depth by depth (trunk -> primary boughs -> twigs)
-    const growthStart = 0.1 * T;
-    const growthEnd = 0.6 * T;
+    // 3. Tree branches spread wide across entire screen
+    const growthStart = 0.08 * T;
+    const growthEnd = 0.62 * T;
     const growthSpan = growthEnd - growthStart;
     for (let d = 0; d <= CANOPY_MAX_DEPTH; d++) {
       const segs = branchPaths.filter((el) => el.getAttribute("data-depth") === String(d));
@@ -449,48 +447,48 @@ export default function CinematicIntroLoader({
         const segDur = (growthSpan / CANOPY_MAX_DEPTH) * 1.5;
         tl.to(
           segs,
-          { strokeDashoffset: 0, duration: segDur, stagger: segDur * 0.1, ease: "power2.out" },
+          { strokeDashoffset: 0, duration: segDur, stagger: segDur * 0.08, ease: "power2.out" },
           segStart
         );
       }
     }
 
-    // 4. Leaves unfurl with organic rotational wobble and bounce
+    // 4. Leaves burst and fill the entire screen
     tl.to(
       leafGroups,
       {
         scale: 1,
         opacity: 1,
-        rotation: (i: number) => `+=${((i * 37) % 13) - 6}`,
-        duration: 0.24 * T,
-        ease: "back.out(1.6)",
-        stagger: { amount: 0.26 * T, from: "random" },
+        rotation: (i: number) => `+=${((i * 37) % 15) - 7}`,
+        duration: 0.28 * T,
+        ease: "back.out(1.5)",
+        stagger: { amount: 0.32 * T, from: "center" },
       },
-      0.58 * T
+      0.54 * T
     );
 
-    // 5. Warm golden canopy bloom settles in
-    tl.to(bloomRef.current, { opacity: 0.55, duration: 0.16 * T, ease: "power1.out" }, 0.8 * T);
+    // 5. Warm golden canopy bloom
+    tl.to(bloomRef.current, { opacity: 0.65, duration: 0.18 * T, ease: "power1.out" }, 0.78 * T);
 
-    // 6. Letterpress title
+    // 6. Letterpress caption
     if (title) {
       tl.to(
         captionRef.current,
-        { opacity: 1, y: 0, letterSpacing: "0.18em", duration: 0.16 * T, ease: "power2.out" },
-        0.86 * T
+        { opacity: 1, y: 0, letterSpacing: "0.22em", duration: 0.18 * T, ease: "power2.out" },
+        0.84 * T
       );
     }
 
-    // 7. Ambient wind breathing loop for the canopy
+    // 7. Ambient wind breathing for full-screen foliage
     clusterGroups.forEach((g, i) => {
       const tw = gsap.to(g, {
-        rotation: (i % 2 === 0 ? 1 : -1) * (1.4 + (i % 4) * 0.4),
+        rotation: (i % 2 === 0 ? 1 : -1) * (1.6 + (i % 4) * 0.5),
         transformOrigin: "center",
-        duration: 2.2 + (i % 5) * 0.35,
+        duration: 2.4 + (i % 6) * 0.4,
         ease: "sine.inOut",
         repeat: -1,
         yoyo: true,
-        delay: 0.85 * T + (i % 7) * 0.08,
+        delay: 0.85 * T + (i % 9) * 0.06,
       });
       activeTweens.push(tw);
     });
@@ -512,22 +510,23 @@ export default function CinematicIntroLoader({
         {
           "--paper-opacity": 0,
           background: "#e7ddc6",
-          clipPath: "circle(150% at 50% 44%)",
+          clipPath: "circle(150% at 50% 50%)",
         } as React.CSSProperties
       }
     >
-      {/* Aged paper base + vignette */}
+      {/* Full-screen aged paper base */}
       <div
         className="absolute inset-0"
         style={{
           opacity: "var(--paper-opacity)" as unknown as number,
           transition: "opacity 0.4s ease-out",
           background:
-            "radial-gradient(ellipse at 50% 42%, #f1e7cf 0%, #e7ddc3 55%, #d8caa8 100%)",
+            "radial-gradient(ellipse at 50% 45%, #f2e9d2 0%, #e8dec4 50%, #d5c5a2 100%)",
         }}
       />
+
       {/* Fine paper grain texture */}
-      <svg className="absolute inset-0 w-full h-full opacity-[0.05] mix-blend-multiply pointer-events-none">
+      <svg className="absolute inset-0 w-full h-full opacity-[0.055] mix-blend-multiply pointer-events-none">
         <filter id="grain">
           <feTurbulence
             type="fractalNoise"
@@ -543,42 +542,49 @@ export default function CinematicIntroLoader({
       {/* Ink dust motes canvas */}
       <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-10" />
 
-      {/* Warm bloom light behind the canopy */}
+      {/* Radiant golden sun bloom across the canopy */}
       <div
         ref={bloomRef}
-        className="absolute top-[28%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none z-10"
+        className="absolute top-[35%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] rounded-full pointer-events-none z-10"
         style={{
           background:
-            "radial-gradient(circle, rgba(147,181,101,0.3) 0%, rgba(201,154,59,0.16) 42%, transparent 72%)",
+            "radial-gradient(circle, rgba(163,205,116,0.38) 0%, rgba(201,154,59,0.22) 45%, transparent 75%)",
         }}
       />
 
-      {/* Center plate */}
-      <div className="relative z-20 w-full max-w-xl flex items-center justify-center p-6">
+      {/* FULL-SCREEN Botanical SVG Canopy */}
+      <div className="absolute inset-0 w-full h-full pointer-events-none z-20 flex items-center justify-center">
         <svg
           ref={svgRef}
-          viewBox="0 0 500 500"
-          className="w-[320px] h-[320px] sm:w-[460px] sm:h-[460px]"
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          preserveAspectRatio="xMidYMax slice"
+          className="w-full h-full object-cover filter drop-shadow-[0_15px_35px_rgba(40,30,20,0.18)]"
           xmlns="http://www.w3.org/2000/svg"
         >
           <defs>
-            <symbol id="leafA" viewBox="-10 -26 20 30">
-              <path d="M0,2 C-7,-4 -7,-18 0,-26 C7,-18 7,-4 0,2 Z" />
-              <path d="M0,0 L0,-22" stroke="#00000030" strokeWidth="0.6" fill="none" />
+            <symbol id="leafA" viewBox="-12 -30 24 36">
+              <path d="M0,3 C-9,-5 -9,-22 0,-30 C9,-22 9,-5 0,3 Z" />
+              <path d="M0,1 L0,-26" stroke="#00000032" strokeWidth="0.7" fill="none" />
               <path
-                d="M0,-6 L-4,-11 M0,-11 L4,-16"
+                d="M0,-7 L-5,-13 M0,-13 L5,-19 M0,-19 L-4,-24"
                 stroke="#00000022"
                 strokeWidth="0.5"
                 fill="none"
               />
             </symbol>
-            <symbol id="leafB" viewBox="-10 -24 20 28">
-              <path d="M0,3 C-8,-1 -8,-15 0,-23 C8,-15 8,-1 0,3 Z" />
-              <path d="M0,1 L0,-19" stroke="#00000028" strokeWidth="0.6" fill="none" />
+            <symbol id="leafB" viewBox="-14 -28 28 34">
+              <path d="M0,4 C-11,-2 -11,-18 0,-27 C11,-18 11,-2 0,4 Z" />
+              <path d="M0,2 L0,-23" stroke="#0000002e" strokeWidth="0.7" fill="none" />
+              <path
+                d="M0,-6 L-6,-11 M0,-12 L6,-17"
+                stroke="#00000020"
+                strokeWidth="0.5"
+                fill="none"
+              />
             </symbol>
           </defs>
 
-          {/* Roots */}
+          {/* Full-width Roots */}
           <g fill="none" strokeLinecap="round">
             {rootSegments.map((s, i) => (
               <path
@@ -593,7 +599,7 @@ export default function CinematicIntroLoader({
             ))}
           </g>
 
-          {/* Canopy branches */}
+          {/* Full-width Canopy Branches */}
           <g fill="none" strokeLinecap="round">
             {branchSegments.map((s, i) => (
               <path
@@ -609,7 +615,7 @@ export default function CinematicIntroLoader({
             ))}
           </g>
 
-          {/* Foliage clusters */}
+          {/* Screen-Filling Foliage Canopy */}
           {clusters.map((cluster) => (
             <g
               key={cluster.id}
@@ -634,33 +640,35 @@ export default function CinematicIntroLoader({
         </svg>
       </div>
 
-      {/* Letterpress frame + caption */}
+      {/* Elegant Letterpress Frame */}
       <svg className="absolute inset-0 w-full h-full pointer-events-none z-30">
         <g ref={frameRef}>
           <rect
-            x="28"
-            y="28"
-            style={{ width: "calc(100% - 56px)", height: "calc(100% - 56px)" }}
+            x="24"
+            y="24"
+            style={{ width: "calc(100% - 48px)", height: "calc(100% - 48px)" }}
             fill="none"
             stroke="#3a332c"
-            strokeOpacity="0.35"
+            strokeOpacity="0.3"
             strokeWidth="1"
           />
-          <line x1="28" y1="20" x2="28" y2="36" stroke="#3a332c" strokeOpacity="0.35" />
-          <line x1="20" y1="28" x2="36" y2="28" stroke="#3a332c" strokeOpacity="0.35" />
+          <line x1="24" y1="16" x2="24" y2="32" stroke="#3a332c" strokeOpacity="0.35" />
+          <line x1="16" y1="24" x2="32" y2="24" stroke="#3a332c" strokeOpacity="0.35" />
         </g>
       </svg>
 
+      {/* Bottom Letterpress Title */}
       {title ? (
         <div
           ref={captionRef}
-          className="absolute bottom-[12%] left-1/2 -translate-x-1/2 z-30 text-center"
+          className="absolute bottom-[6%] left-1/2 -translate-x-1/2 z-30 text-center pointer-events-none"
           style={{
             fontFamily: "Georgia, 'Times New Roman', serif",
             fontStyle: "italic",
-            fontSize: "13px",
+            fontSize: "14px",
             color: "#3a332c",
             textTransform: "uppercase",
+            letterSpacing: "0.22em",
           }}
         >
           {title}
