@@ -53,9 +53,9 @@ async def register_plant(
     except Exception as e:
         logger.warning(f"Rate limiter warning on plant register: {e}")
 
-    species = None
+    plant_name = (req.common_name or "").strip()
 
-    # 1. Try resolving by species_id if valid UUID
+    # 1. If species_id provided, check if it matches
     if req.species_id and str(req.species_id).strip():
         try:
             species_uuid = uuid.UUID(str(req.species_id).strip())
@@ -64,33 +64,36 @@ async def register_plant(
         except (ValueError, TypeError):
             pass
 
-    # 2. Try resolving by common_name if species not found yet
-    if not species and req.common_name and req.common_name.strip():
+    # 2. If no species found yet, try matching by common name (case-insensitive)
+    if not species and plant_name:
         result = await db.execute(
-            select(PlantSpecies).filter(PlantSpecies.common_name.ilike(f"%{req.common_name.strip()}%"))
+            select(PlantSpecies).filter(PlantSpecies.common_name.ilike(plant_name))
         )
         species = result.scalars().first()
 
-    # 3. Fallback to any existing species in DB
+    # 3. If it's a new or custom plant, create a dedicated species record for it
     if not species:
-        result = await db.execute(select(PlantSpecies).limit(1))
-        species = result.scalars().first()
-
-    # 4. If DB is completely empty, dynamically create a fallback species record
-    if not species:
-        species_name = req.common_name.strip() if req.common_name else "Urban Tree"
+        final_name = plant_name if plant_name else "Custom Plant"
         species = PlantSpecies(
             id=uuid.uuid4(),
-            common_name=species_name,
-            scientific_name=f"{species_name} sp. {uuid.uuid4().hex[:6]}",
+            common_name=final_name,
+            scientific_name=f"{final_name} ({uuid.uuid4().hex[:6]})",
             genus="Plantae",
             family="Flora",
+            co2_absorption_rate=12.5,
+            pm25_absorption_rate=0.5,
+            voc_absorption_rate=0.4,
             toxicity_level=ToxicityLevel.NONE,
             allergen_risk=AllergenRisk.NONE,
             maintenance_level=MaintenanceLevel.LOW,
-            growth_rate=GrowthRate.FAST,
-            space_type_compatibility=[SpaceType.INDOOR, SpaceType.OUTDOOR_BALCONY, SpaceType.OUTDOOR_GARDEN, SpaceType.PUBLIC_PARK],
-            data_source="Auto-created during plant registration",
+            growth_rate=GrowthRate.MODERATE,
+            space_type_compatibility=[
+                SpaceType.INDOOR,
+                SpaceType.OUTDOOR_BALCONY,
+                SpaceType.OUTDOOR_GARDEN,
+                SpaceType.PUBLIC_PARK,
+            ],
+            data_source="User-Registered Species",
         )
         db.add(species)
         await db.commit()
