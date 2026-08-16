@@ -4,20 +4,16 @@ export const getBaseUrl = () => {
   let url = process.env.NEXT_PUBLIC_API_URL;
   if (!url || url === '/api') {
     if (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')) {
-      return 'https://greenxchange-backend.onrender.com/api';
+      return 'https://greenxchange-backend.onrender.com';
     }
-    return '/api';
+    return '';
   }
   url = url.trim();
   if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/')) {
     url = `https://${url}`;
   }
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    if (!url.endsWith('/api') && !url.endsWith('/api/')) {
-      url = `${url.replace(/\/+$/, '')}/api`;
-    }
-  }
-  return url;
+  // Strip trailing slash
+  return url.replace(/\/+$/, '');
 };
 
 const api = axios.create({

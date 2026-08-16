@@ -68,20 +68,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Dual-mount routers on both /api/<prefix> and /<prefix> for universal compatibility
+routers_list = [
+    (health.router, "health"),
+    (auth.router, "auth"),
+    (users.router, "users"),
+    (environment.router, "environment"),
+    (recommendations.router, "recommendations"),
+    (plants.router, "plants"),
+    (growth.router, "plants"),
+    (rewards.router, "rewards"),
+    (drives.router, "drives"),
+    (news.router, "news"),
+    (dashboard.router, "dashboard"),
+]
 
-
-app.include_router(health.router, prefix="/api/health", tags=["health"])
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(users.router, prefix="/api/users", tags=["users"])
-app.include_router(environment.router, prefix="/api/environment", tags=["environment"])
-app.include_router(recommendations.router, prefix="/api/recommendations", tags=["recommendations"])
-app.include_router(plants.router, prefix="/api/plants", tags=["plants"])
-app.include_router(growth.router, prefix="/api/plants", tags=["growth"])
-app.include_router(rewards.router, prefix="/api/rewards", tags=["rewards"])
-app.include_router(drives.router, prefix="/api/drives", tags=["drives"])
-app.include_router(news.router, prefix="/api/news", tags=["news"])
-app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
+for router_obj, prefix in routers_list:
+    app.include_router(router_obj, prefix=f"/api/{prefix}", tags=[prefix])
+    app.include_router(router_obj, prefix=f"/{prefix}", tags=[prefix])
 
 @app.get("/")
 def root():
-    return {"message": "GreenXchange API Root"}
+    return {"message": "GreenXchange API Root", "status": "online"}
