@@ -1,9 +1,12 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import uuid
 import logging
 from app.api import health, auth, users, environment, recommendations, plants, growth, rewards, drives, news, dashboard
 from app.core.logging import setup_logging
+from app.db.session import engine
+from app.db.base import Base
 
 setup_logging()
 logger = logging.getLogger("backend")
@@ -11,7 +14,28 @@ logger = logging.getLogger("backend")
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-app = FastAPI(title="GreenXchange API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure database tables are created on startup (essential for cloud databases)
+    try:
+        async with engine.begin() as conn:
+            try:
+                from sqlalchemy import text
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
+            except Exception as e:
+                logger.warning(f"PostGIS extension notice: {e}")
+            await conn.run_sync(Base.metadata.create_all)
+            try:
+                from app.models.org_payments import OrganizationPaymentRequest
+                await conn.run_sync(OrganizationPaymentRequest.metadata.create_all)
+            except Exception:
+                pass
+        logger.info("✅ Database tables verified and created successfully.")
+    except Exception as e:
+        logger.error(f"❌ Database table initialization error: {e}")
+    yield
+
+app = FastAPI(title="GreenXchange API", lifespan=lifespan)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -47,8 +71,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
 
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])

@@ -1,7 +1,26 @@
 import axios from 'axios';
 
+export const getBaseUrl = () => {
+  let url = process.env.NEXT_PUBLIC_API_URL;
+  if (!url) {
+    return '/api';
+  }
+  url = url.trim();
+  // If provided as a hostname without protocol (e.g. greenxchange-backend.onrender.com)
+  if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/')) {
+    url = `https://${url}`;
+  }
+  // Ensure /api suffix
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    if (!url.endsWith('/api') && !url.endsWith('/api/')) {
+      url = `${url.replace(/\/+$/, '')}/api`;
+    }
+  }
+  return url;
+};
+
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  baseURL: getBaseUrl(),
   withCredentials: true,
 });
 
@@ -12,8 +31,9 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
+        const rootApi = getBaseUrl();
         const res = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
+          `${rootApi}/auth/refresh`,
           {},
           { withCredentials: true }
         );
