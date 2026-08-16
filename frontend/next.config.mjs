@@ -6,23 +6,33 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  async rewrites() {
-    const rawBackendUrl =
-      process.env.BACKEND_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      "https://greenxchange-backend.onrender.com";
 
-    let target = rawBackendUrl.trim();
-    if (!target.startsWith("http://") && !target.startsWith("https://")) {
-      target = `https://${target}`;
-    }
-    // Strip trailing /api or slash to avoid duplication in destination
-    target = target.replace(/\/api\/?$/, "").replace(/\/+$/, "");
-
+  // Security headers for production
+  async headers() {
     return [
       {
-        source: "/api/:path*",
-        destination: `${target}/api/:path*`,
+        source: "/(.*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=(self)",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "font-src 'self' https://fonts.gstatic.com",
+              "img-src 'self' data: blob: https:",
+              "connect-src 'self' https://greenxchange-backend.onrender.com https://*.onrender.com wss:",
+              "frame-ancestors 'none'",
+            ].join("; "),
+          },
+        ],
       },
     ];
   },

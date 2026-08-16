@@ -1,10 +1,16 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.core.config import settings
+import logging
 
-# Ensure we use asyncpg for FastAPI
+logger = logging.getLogger(__name__)
+
 db_url = settings.DATABASE_URL
 
-# Normalize driver: asyncpg is used for async FastAPI sessions
+# Render PostgreSQL uses postgres:// prefix — normalize to postgresql://
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+# Normalize driver to asyncpg for FastAPI async sessions
 if db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 elif db_url.startswith("postgresql+psycopg2://"):
@@ -17,8 +23,20 @@ if "sslmode=require" in db_url:
     db_url = db_url.replace("?sslmode=require", "").replace("&sslmode=require", "")
     use_ssl = True
 
+# Render internal DB connections need SSL
+if ".render.com" in db_url or "onrender.com" in db_url:
+    use_ssl = True
+
 connect_args = {"ssl": "require"} if use_ssl else {}
 
-engine = create_async_engine(db_url, echo=False, connect_args=connect_args)
-AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+logger.info(f"Database engine initialized (ssl={'enabled' if use_ssl else 'disabled'})")
 
+engine = create_async_engine(
+    db_url,
+    echo=False,
+    pool_size=5,
+    max_overflow=10,
+    pool_pre_ping=True,  # Verify connections before using them
+    connect_args=connect_args
+)
+AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

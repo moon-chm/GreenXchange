@@ -4,10 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { useReducedMotion, motion } from "framer-motion";
 import api from "@/lib/axios";
-import { useAuth } from "@/context/AuthContext";
 import GxcLogo from "@/components/icons/GxcLogo";
-import { CheckCircle2, ArrowRight } from "lucide-react";
 import { extractErrorMessage } from "@/lib/utils";
+import { CheckCircle2, ArrowRight, Sparkles } from "lucide-react";
 
 /* ─── Inline SVG leaf shape ─────────────────────────────────────── */
 function FloatingLeaf({
@@ -18,7 +17,11 @@ function FloatingLeaf({
   style?: React.CSSProperties;
 }) {
   return (
-    <span className={className} style={style} aria-hidden="true">
+    <span
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
       <svg
         width="40"
         height="40"
@@ -87,9 +90,7 @@ function FormRow({
       initial={{ opacity: 0, y: reduced ? 0 : 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={
-        reduced
-          ? { duration: 0 }
-          : { delay: index * 0.06, duration: 0.35, ease: "easeOut" }
+        reduced ? { duration: 0 } : { delay: index * 0.06, duration: 0.35, ease: "easeOut" }
       }
     >
       {children}
@@ -105,6 +106,7 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
+  const [verificationUrl, setVerificationUrl] = useState<string | null>(null);
   const reduced = useReducedMotion() ?? false;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,7 +120,10 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      await api.post("/auth/register", { name, email, password });
+      const res = await api.post("/auth/register", { name, email, password });
+      if (res.data?.verification_url) {
+        setVerificationUrl(res.data.verification_url);
+      }
       setIsRegistered(true);
     } catch (err: any) {
       if (err.response?.status === 400 || err.response?.status === 409) {
@@ -209,136 +214,158 @@ export default function RegisterPage() {
                 <p className="text-sm text-canopy/70">
                   We&apos;ve sent a verification link to <strong>{email}</strong>.
                 </p>
-                <p className="text-xs text-canopy/50 pt-2">
-                  Please click the link in the email to activate your account and begin earning GXC rewards!
+                <p className="text-xs text-canopy/50 pt-1">
+                  Please click the link in your email or click the instant activation button below to begin:
                 </p>
               </div>
 
-              <div className="pt-2">
-                <Link
-                  href="/login"
-                  className="inline-flex items-center justify-center gap-2 w-full px-6 py-3 rounded-xl bg-fern hover:bg-forest text-parchment font-semibold shadow-button transition-all duration-200 text-sm"
-                >
-                  Go to Sign In
-                  <ArrowRight size={16} />
-                </Link>
-              </div>
+              {verificationUrl ? (
+                <div className="space-y-3 pt-2">
+                  <a
+                    href={verificationUrl}
+                    className="inline-flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-xl bg-fern hover:bg-forest text-parchment font-semibold shadow-button transition-all duration-200 text-sm"
+                  >
+                    <Sparkles size={16} />
+                    Activate Account Instantly
+                  </a>
+                  <Link
+                    href="/login"
+                    className="inline-flex items-center justify-center gap-2 w-full px-6 py-2.5 rounded-xl border border-sage/60 hover:bg-sage/10 text-canopy font-medium text-xs transition-all duration-200"
+                  >
+                    Go to Sign In <ArrowRight size={14} />
+                  </Link>
+                </div>
+              ) : (
+                <div className="pt-2">
+                  <Link
+                    href="/login"
+                    className="inline-flex items-center justify-center gap-2 w-full px-6 py-3 rounded-xl bg-fern hover:bg-forest text-parchment font-semibold shadow-button transition-all duration-200 text-sm"
+                  >
+                    Go to Sign In
+                    <ArrowRight size={16} />
+                  </Link>
+                </div>
+              )}
             </motion.div>
           ) : (
             <>
               {/* Heading */}
-              <FormRow index={0} reduced={reduced}>
-                <h1 className="font-display text-3xl font-semibold text-canopy mb-1">
+              <motion.div
+                initial={reduced ? {} : { opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={reduced ? {} : { duration: 0.4, ease: "easeOut" }}
+                className="mb-8"
+              >
+                <h1 className="font-display text-3xl font-bold text-canopy tracking-tight">
                   Create account
                 </h1>
-                <p className="font-sans text-sm text-canopy/60 mb-8">
+                <p className="text-canopy/60 text-sm mt-1">
                   Join GreenXchange and start making a difference
                 </p>
-              </FormRow>
+              </motion.div>
 
-          <form onSubmit={handleSubmit} noValidate className="space-y-5">
-            {/* Full name */}
-            <FormRow index={1} reduced={reduced}>
-              <label
-                htmlFor="name"
-                className="block text-sm font-medium text-canopy mb-1.5"
-              >
-                Full name
-              </label>
-              <input
-                id="name"
-                type="text"
-                autoComplete="name"
-                required
-                placeholder="Jane Smith"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className={inputClass}
-              />
-            </FormRow>
+              {/* Form */}
+              <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+                <FormRow index={0} reduced={reduced}>
+                  <div>
+                    <label
+                      htmlFor="register-name"
+                      className="block text-xs font-semibold text-canopy mb-1.5"
+                    >
+                      Full name
+                    </label>
+                    <input
+                      id="register-name"
+                      type="text"
+                      required
+                      autoComplete="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Rohit Avinash Kumbhar"
+                      className={inputClass}
+                    />
+                  </div>
+                </FormRow>
 
-            {/* Email */}
-            <FormRow index={2} reduced={reduced}>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-canopy mb-1.5"
-              >
-                Email address
-              </label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                required
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className={inputClass}
-              />
-            </FormRow>
+                <FormRow index={1} reduced={reduced}>
+                  <div>
+                    <label
+                      htmlFor="register-email"
+                      className="block text-xs font-semibold text-canopy mb-1.5"
+                    >
+                      Email address
+                    </label>
+                    <input
+                      id="register-email"
+                      type="email"
+                      required
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="rohitak1865@gmail.com"
+                      className={inputClass}
+                    />
+                  </div>
+                </FormRow>
 
-            {/* Password */}
-            <FormRow index={3} reduced={reduced}>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-canopy mb-1.5"
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={8}
-                placeholder="Min. 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={inputClass}
-              />
-            </FormRow>
+                <FormRow index={2} reduced={reduced}>
+                  <div>
+                    <label
+                      htmlFor="register-password"
+                      className="block text-xs font-semibold text-canopy mb-1.5"
+                    >
+                      Password
+                    </label>
+                    <input
+                      id="register-password"
+                      type="password"
+                      required
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className={inputClass}
+                    />
+                  </div>
+                </FormRow>
 
-            {/* Error */}
-            {error && (
-              <FormRow index={4} reduced={reduced}>
-                <p className="text-sm text-red-600 font-medium" role="alert">
-                  {error}
-                </p>
-              </FormRow>
-            )}
-
-            {/* Submit */}
-            <FormRow index={error ? 5 : 4} reduced={reduced}>
-              <motion.button
-                type="submit"
-                disabled={loading}
-                whileTap={reduced ? {} : { scale: 0.97 }}
-                className="bg-fern hover:bg-forest text-parchment rounded-xl py-3 w-full font-semibold text-sm transition-colors duration-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <>
-                    <Spinner />
-                    <span>Creating account…</span>
-                  </>
-                ) : (
-                  "Create account"
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-3.5 bg-red-50/80 border border-red-200/80 text-red-700 text-xs rounded-xl font-sans"
+                    role="alert"
+                  >
+                    {error}
+                  </motion.div>
                 )}
-              </motion.button>
-            </FormRow>
-          </form>
 
-          {/* Footer link */}
-          <FormRow index={error ? 6 : 5} reduced={reduced}>
-            <p className="mt-6 text-center text-sm text-canopy/60">
-              Already have an account?{" "}
-              <Link
-                href="/login"
-                className="text-fern hover:text-forest font-medium transition-colors duration-200"
+                <FormRow index={3} reduced={reduced}>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 px-4 bg-forest hover:bg-canopy text-parchment font-semibold rounded-xl transition-all duration-200 flex items-center justify-center text-sm shadow-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer mt-2"
+                  >
+                    {loading ? <Spinner /> : "Create account"}
+                  </button>
+                </FormRow>
+              </form>
+
+              {/* Footer switch */}
+              <motion.p
+                initial={reduced ? {} : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={reduced ? {} : { delay: 0.3, duration: 0.4 }}
+                className="text-center text-xs text-canopy/60 mt-8 font-sans"
               >
-                Sign in
-              </Link>
-            </p>
-          </FormRow>
+                Already have an account?{" "}
+                <Link
+                  href="/login"
+                  className="font-semibold text-forest hover:text-canopy underline underline-offset-2 transition-colors"
+                >
+                  Sign in
+                </Link>
+              </motion.p>
             </>
           )}
         </div>
@@ -346,4 +373,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-

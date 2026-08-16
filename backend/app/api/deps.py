@@ -16,6 +16,14 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
 
+def _decode_jwt(token: str) -> dict:
+    public_key = settings.jwt_public_key
+    if public_key and public_key.strip():
+        # RSA keypair configured — use RS256
+        return jwt.decode(token, public_key, algorithms=["RS256"])
+    # No RSA keys — fall back to HS256 symmetric
+    return jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+
 async def get_current_user(
     db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)
 ) -> User:
@@ -25,7 +33,7 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, settings.jwt_public_key, algorithms=[settings.ALGORITHM])
+        payload = _decode_jwt(token)
         token_type: str = payload.get("type")
         if token_type != "access":
             raise credentials_exception
@@ -67,14 +75,6 @@ async def get_current_user_optional(
     if not token:
         return None
     try:
-        payload = jwt.decode(token, settings.jwt_public_key, algorithms=[settings.ALGORITHM])
-        user_id: str = payload.get("sub")
-        if not user_id:
-            return None
-        user_uuid = uuid.UUID(user_id)
-        result = await db.execute(select(User).where(User.id == user_uuid))
-        return result.scalar_one_or_none()
+        return await get_current_user(db=db, token=token)
     except Exception:
         return None
-
-
