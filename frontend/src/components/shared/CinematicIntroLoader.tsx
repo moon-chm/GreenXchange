@@ -1,475 +1,472 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+/**
+ * CinematicIntroLoader — "Field Notes"
+ * ------------------------------------
+ * A full-screen intro sequence styled as a botanical field-guide plate:
+ * a single ink line draws a tree onto aged paper, leaves unfurl as small
+ * hand-cut leaf shapes (not gradient circles), a warm bloom settles in,
+ * and the whole plate closes like a lens iris on exit.
+ *
+ * Design notes:
+ * - Palette: aged paper, warm charcoal ink, burnt sienna + ochre bloom.
+ * - No glossy gradients-as-sky, no glow-bokeh particles — texture comes
+ *   from crosshatching and fine dust motes instead.
+ * - `minDisplayTime` now genuinely drives total duration: every beat in
+ *   the growth timeline is expressed as a fraction of it, so a 1.5s call
+ *   and an 8s call both play the full sequence at a different pace.
+ */
+
+import React, { useEffect, useMemo, useRef } from "react";
 import gsap from "gsap";
 
 interface CinematicIntroLoaderProps {
   onComplete?: () => void;
   autoDismiss?: boolean;
   minDisplayTime?: number;
+  /** Small caption that letterpresses in under the plate. Pass "" to omit. */
+  title?: string;
 }
+
+/* ---------------------------------------------------------------------- */
+/* Deterministic PRNG so leaf scatter is identical on server & client     */
+/* (avoids hydration mismatch from Math.random in render).                */
+/* ---------------------------------------------------------------------- */
+function mulberry32(seed: number) {
+  let s = seed | 0;
+  return function () {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+type Tone = "ink" | "gold" | "sienna";
+interface LeafDatum {
+  id: string;
+  x: number;
+  y: number;
+  rot: number;
+  scale: number;
+  tone: Tone;
+}
+
+/** Rough tips of the primary/secondary boughs below — leaves cluster here. */
+const LOBES: Array<{ x: number; y: number; spread: number; count: number }> = [
+  { x: 250, y: 66, spread: 26, count: 9 },
+  { x: 210, y: 82, spread: 22, count: 7 },
+  { x: 292, y: 80, spread: 22, count: 7 },
+  { x: 150, y: 118, spread: 24, count: 8 },
+  { x: 108, y: 154, spread: 22, count: 7 },
+  { x: 350, y: 112, spread: 24, count: 8 },
+  { x: 392, y: 150, spread: 22, count: 7 },
+  { x: 250, y: 140, spread: 26, count: 8 },
+  { x: 182, y: 172, spread: 18, count: 6 },
+  { x: 320, y: 168, spread: 18, count: 6 },
+];
+
+const TONE_FILL: Record<Tone, string> = {
+  ink: "#3a332c",
+  gold: "#c99a3b",
+  sienna: "#b5482e",
+};
 
 export default function CinematicIntroLoader({
   onComplete,
   autoDismiss = true,
-  minDisplayTime = 4000,
+  minDisplayTime = 4200,
+  title = "Rooted",
 }: CinematicIntroLoaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const skyBgRef = useRef<HTMLDivElement>(null);
-  const sunGlowRef = useRef<HTMLDivElement>(null);
-  const sunBeamsRef = useRef<HTMLDivElement>(null);
-  const treeSvgRef = useRef<SVGSVGElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const bloomRef = useRef<HTMLDivElement>(null);
+  const captionRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<SVGGElement>(null);
+
+  // Keep the latest onComplete without forcing the whole effect to re-run
+  // every render (an inline arrow prop is a new reference each time).
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  // Deterministic leaf scatter, computed once.
+  const leaves = useMemo(() => {
+    const rand = mulberry32(20260817);
+    const out: LeafDatum[] = [];
+    LOBES.forEach((lobe, li) => {
+      for (let i = 0; i < lobe.count; i++) {
+        const angle = rand() * Math.PI * 2;
+        const radius = lobe.spread * (0.25 + rand() * 0.75);
+        const toneRoll = rand();
+        out.push({
+          id: `${li}-${i}`,
+          x: lobe.x + Math.cos(angle) * radius,
+          y: lobe.y + Math.sin(angle) * radius * 0.85,
+          rot: rand() * 360,
+          scale: 0.55 + rand() * 0.7,
+          tone: toneRoll < 0.55 ? "ink" : toneRoll < 0.82 ? "gold" : "sienna",
+        });
+      }
+    });
+    return out;
+  }, []);
 
   useEffect(() => {
+    const container = containerRef.current;
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const svg = svgRef.current;
+    if (!container || !canvas || !svg) return;
 
-    let animationFrameId: number;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    const ctx = canvas.getContext("2d");
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+
+    const sizeCanvas = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    sizeCanvas();
 
     const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
+      sizeCanvas();
+      motes.forEach((m) => {
+        m.x = Math.min(m.x, width);
+        m.y = Math.min(m.y, height);
+      });
     };
     window.addEventListener("resize", handleResize);
 
-    // Particle dynamics: soot smog -> glowing bio-luminescent oxygen spores
-    interface Particle {
+    /* ---------------- ink dust motes (no glow, fine specks) ------------- */
+    interface Mote {
       x: number;
       y: number;
       vx: number;
       vy: number;
       size: number;
-      baseSize: number;
       alpha: number;
-      color: string;
-      isCleansed: boolean;
-      swayOffset: number;
-      swaySpeed: number;
+      settled: boolean;
+      flicker: number;
+    }
+    const MOTE_COUNT = 60;
+    const motes: Mote[] = Array.from({ length: MOTE_COUNT }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: (Math.random() - 0.5) * 0.25,
+      vy: Math.random() * 0.15 + 0.05,
+      size: Math.random() * 1.3 + 0.5,
+      alpha: Math.random() * 0.35 + 0.15,
+      settled: false,
+      flicker: Math.random() * Math.PI * 2,
+    }));
+
+    const progressRef = { current: 0 };
+
+    let raf = 0;
+    const render = () => {
+      if (ctx) {
+        ctx.clearRect(0, 0, width, height);
+        const bloomAmt = progressRef.current; // 0 -> 1 across the growth beat
+        motes.forEach((m) => {
+          m.flicker += 0.03;
+          if (!m.settled && bloomAmt > 0.7 && Math.random() < 0.02) {
+            m.settled = true;
+            m.vy = -(Math.random() * 0.22 + 0.06);
+            m.vx = (Math.random() - 0.5) * 0.18;
+          }
+          m.x += m.vx;
+          m.y += m.vy;
+          if (m.x < -4) m.x = width + 4;
+          if (m.x > width + 4) m.x = -4;
+          if (m.y < -4) m.y = height + 4;
+          if (m.y > height + 4) m.y = -4;
+
+          ctx.globalAlpha = m.alpha * (0.6 + 0.4 * Math.sin(m.flicker));
+          ctx.fillStyle = m.settled ? "#c99a3b" : "#3a332c";
+          ctx.fillRect(m.x, m.y, m.size, m.size);
+        });
+        ctx.globalAlpha = 1;
+      }
+      raf = requestAnimationFrame(render);
+    };
+    render();
+
+    /* ---------------- draw-on lengths, computed for real ---------------- */
+    const strokeEls = Array.from(
+      svg.querySelectorAll<SVGPathElement>(".ink-line")
+    );
+    strokeEls.forEach((el) => {
+      const len = el.getTotalLength();
+      el.style.strokeDasharray = `${len}`;
+      el.style.strokeDashoffset = `${len}`;
+    });
+
+    const leafGroups = Array.from(
+      svg.querySelectorAll<SVGGElement>(".leaf-pop")
+    );
+    gsap.set(leafGroups, { scale: 0, opacity: 0, transformOrigin: "center" });
+    gsap.set(bloomRef.current, { opacity: 0 });
+    gsap.set(captionRef.current, { opacity: 0, y: 8, letterSpacing: "0.5em" });
+    gsap.set(frameRef.current, { opacity: 0 });
+
+    if (reduceMotion) {
+      // Skip straight to the resolved state, then dismiss on a simple fade.
+      strokeEls.forEach((el) => (el.style.strokeDashoffset = "0"));
+      gsap.set(leafGroups, { scale: 1, opacity: 1 });
+      gsap.set(bloomRef.current, { opacity: 0.5 });
+      gsap.set(captionRef.current, { opacity: 1, y: 0, letterSpacing: "0.18em" });
+      gsap.set(frameRef.current, { opacity: 1 });
+      progressRef.current = 1;
+      const t = setTimeout(() => {
+        if (autoDismiss) {
+          gsap.to(container, {
+            opacity: 0,
+            duration: 0.5,
+            onComplete: () => onCompleteRef.current?.(),
+          });
+        }
+      }, Math.max(600, minDisplayTime * 0.4));
+      return () => {
+        clearTimeout(t);
+        cancelAnimationFrame(raf);
+        window.removeEventListener("resize", handleResize);
+      };
     }
 
-    const particles: Particle[] = [];
-    const PARTICLE_COUNT = 110;
+    // Every beat below is a FRACTION of T, so total growth duration always
+    // equals minDisplayTime regardless of its value.
+    const T = Math.max(1.2, minDisplayTime / 1000);
 
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      particles.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.6,
-        vy: -Math.random() * 0.6 - 0.2,
-        size: Math.random() * 2.8 + 1.0,
-        baseSize: Math.random() * 2.8 + 1.0,
-        alpha: Math.random() * 0.5 + 0.2,
-        color: "#57534e", // smog ash
-        isCleansed: false,
-        swayOffset: Math.random() * Math.PI * 2,
-        swaySpeed: Math.random() * 0.03 + 0.01,
-      });
-    }
-
-    let progressObj = { val: 0 };
-
-    // Master Timeline
     const tl = gsap.timeline({
+      onUpdate: () => {
+        progressRef.current = tl.progress();
+      },
       onComplete: () => {
         if (autoDismiss) {
-          gsap.to(containerRef.current, {
-            opacity: 0,
-            scale: 1.03,
+          gsap.to(container, {
+            "--iris": "0%",
             duration: 0.9,
-            ease: "power2.inOut",
-            onComplete: () => {
-              if (onComplete) onComplete();
-            },
-          });
+            ease: "power3.inOut",
+            onComplete: () => onCompleteRef.current?.(),
+          } as gsap.TweenVars);
         }
       },
     });
 
-    // 1. Progress driver
+    // Paper + frame settle in.
+    tl.to(container, { "--paper-opacity": 1, duration: 0.18 * T } as gsap.TweenVars, 0);
+    tl.to(frameRef.current, { opacity: 1, duration: 0.3 * T }, 0.06 * T);
+
+    // Roots draw.
+    const roots = strokeEls.filter((el) => el.dataset.part === "root");
     tl.to(
-      progressObj,
-      {
-        val: 100,
-        duration: minDisplayTime / 1000,
-        ease: "power2.inOut",
-      },
-      0
+      roots,
+      { strokeDashoffset: 0, duration: 0.24 * T, stagger: 0.03 * T, ease: "power2.inOut" },
+      0.08 * T
     );
 
-    // 2. Sky background transition (Murky industrial soot -> Radiant crystalline cerulean blue dawn)
-    if (skyBgRef.current) {
+    // Trunk draws.
+    const trunk = strokeEls.filter((el) => el.dataset.part === "trunk");
+    tl.to(
+      trunk,
+      { strokeDashoffset: 0, duration: 0.3 * T, ease: "power2.inOut" },
+      0.2 * T
+    );
+
+    // Primary boughs.
+    const primary = strokeEls.filter((el) => el.dataset.part === "primary");
+    tl.to(
+      primary,
+      { strokeDashoffset: 0, duration: 0.22 * T, stagger: 0.025 * T, ease: "power2.out" },
+      0.42 * T
+    );
+
+    // Secondary twigs.
+    const secondary = strokeEls.filter((el) => el.dataset.part === "secondary");
+    tl.to(
+      secondary,
+      { strokeDashoffset: 0, duration: 0.18 * T, stagger: 0.015 * T, ease: "power2.out" },
+      0.56 * T
+    );
+
+    // Leaves unfurl — organic per-leaf rotation wobble, not a uniform pop.
+    leafGroups.forEach((g, i) => {
+      const wobble = ((i * 37) % 11) - 5; // deterministic small jitter
       tl.to(
-        skyBgRef.current,
+        g,
         {
-          background: "radial-gradient(ellipse at 50% 35%, #7dd3fc 0%, #38bdf8 30%, #0284c7 65%, #0369a1 90%, #075985 100%)",
-          duration: (minDisplayTime / 1000) * 0.8,
-          ease: "power2.inOut",
+          scale: 1,
+          opacity: 1,
+          rotation: `+=${wobble}`,
+          duration: 0.22 * T,
+          ease: "back.out(1.7)",
         },
-        (minDisplayTime / 1000) * 0.15
+        0.62 * T + (i / leafGroups.length) * 0.28 * T
+      );
+    });
+
+    // Warm bloom settles.
+    tl.to(bloomRef.current, { opacity: 0.55, duration: 0.16 * T, ease: "power1.out" }, 0.78 * T);
+
+    // Caption letterpresses in.
+    if (title) {
+      tl.to(
+        captionRef.current,
+        { opacity: 1, y: 0, letterSpacing: "0.18em", duration: 0.16 * T, ease: "power2.out" },
+        0.86 * T
       );
     }
-
-    // 3. Volumetric Sun Glow and Radiant God Rays
-    if (sunGlowRef.current) {
-      tl.to(
-        sunGlowRef.current,
-        {
-          opacity: 0.95,
-          scale: 1.25,
-          duration: (minDisplayTime / 1000) * 0.7,
-          ease: "power2.out",
-        },
-        (minDisplayTime / 1000) * 0.3
-      );
-    }
-
-    if (sunBeamsRef.current) {
-      tl.to(
-        sunBeamsRef.current,
-        {
-          opacity: 0.7,
-          rotation: 25,
-          duration: (minDisplayTime / 1000) * 0.8,
-          ease: "sine.out",
-        },
-        (minDisplayTime / 1000) * 0.35
-      );
-    }
-
-    // 4. Tree SVG Natural Growth
-    if (treeSvgRef.current) {
-      const seed = treeSvgRef.current.querySelector("#seed-sprout");
-      const roots = treeSvgRef.current.querySelectorAll(".root-path");
-      const trunk = treeSvgRef.current.querySelector("#main-trunk");
-      const primaryBranches = treeSvgRef.current.querySelectorAll(".branch-primary");
-      const secondaryBranches = treeSvgRef.current.querySelectorAll(".branch-secondary");
-      const leavesBg = treeSvgRef.current.querySelectorAll(".leaf-bg");
-      const leavesMg = treeSvgRef.current.querySelectorAll(".leaf-mg");
-      const leavesFg = treeSvgRef.current.querySelectorAll(".leaf-fg");
-
-      // Seed descends with fluttering rotation
-      if (seed) {
-        tl.fromTo(
-          seed,
-          { y: -180, x: -30, rotation: -60, opacity: 0, scale: 0.6 },
-          { y: 0, x: 0, rotation: 0, opacity: 1, scale: 1, duration: 1.1, ease: "bounce.out" },
-          0.05
-        );
-        tl.to(seed, { scale: 0, opacity: 0, duration: 0.35 }, 1.1);
-      }
-
-      // Taproots branch into the earth
-      if (roots.length > 0) {
-        tl.fromTo(
-          roots,
-          { strokeDashoffset: 120, opacity: 0 },
-          { strokeDashoffset: 0, opacity: 0.9, stagger: 0.08, duration: 1.1, ease: "power2.out" },
-          1.0
-        );
-      }
-
-      // Majestic trunk expands upward
-      if (trunk) {
-        tl.fromTo(
-          trunk,
-          { scaleY: 0, transformOrigin: "bottom center", opacity: 0 },
-          { scaleY: 1, opacity: 1, duration: 1.4, ease: "power3.out" },
-          1.15
-        );
-      }
-
-      // Branches emerge
-      if (primaryBranches.length > 0) {
-        tl.fromTo(
-          primaryBranches,
-          { scale: 0, transformOrigin: "bottom center", opacity: 0 },
-          { scale: 1, opacity: 1, stagger: 0.06, duration: 1.2, ease: "back.out(1.4)" },
-          1.4
-        );
-      }
-
-      if (secondaryBranches.length > 0) {
-        tl.fromTo(
-          secondaryBranches,
-          { scale: 0, transformOrigin: "bottom center", opacity: 0 },
-          { scale: 1, opacity: 1, stagger: 0.04, duration: 1.0, ease: "back.out(1.2)" },
-          1.7
-        );
-      }
-
-      // Foliage Bloom (Back -> Mid -> Front layered for realistic depth)
-      if (leavesBg.length > 0) {
-        tl.fromTo(
-          leavesBg,
-          { scale: 0, opacity: 0, transformOrigin: "center center" },
-          { scale: 1, opacity: 0.85, stagger: { amount: 0.8, from: "center" }, duration: 1.1, ease: "elastic.out(1, 0.6)" },
-          1.9
-        );
-      }
-
-      if (leavesMg.length > 0) {
-        tl.fromTo(
-          leavesMg,
-          { scale: 0, opacity: 0, transformOrigin: "center center" },
-          { scale: 1, opacity: 0.95, stagger: { amount: 0.9, from: "center" }, duration: 1.2, ease: "elastic.out(1.1, 0.5)" },
-          2.1
-        );
-      }
-
-      if (leavesFg.length > 0) {
-        tl.fromTo(
-          leavesFg,
-          { scale: 0, opacity: 0, transformOrigin: "center center" },
-          { scale: 1, opacity: 1, stagger: { amount: 0.9, from: "center" }, duration: 1.3, ease: "elastic.out(1.2, 0.4)" },
-          2.3
-        );
-      }
-    }
-
-    // Continuous Canvas Particle & Bio-Atmosphere Render Loop
-    let time = 0;
-    const render = () => {
-      time += 0.02;
-      ctx.clearRect(0, 0, width, height);
-
-      const isClean = progressObj.val > 40;
-
-      particles.forEach((p, idx) => {
-        p.swayOffset += p.swaySpeed;
-        p.x += p.vx + Math.sin(p.swayOffset) * 0.4;
-        p.y += p.vy;
-
-        if (p.x < 0) p.x = width;
-        if (p.x > width) p.x = 0;
-        if (p.y < 0) p.y = height;
-        if (p.y > height) p.y = 0;
-
-        // Particle metamorphosis
-        if (isClean && !p.isCleansed) {
-          if (Math.random() < 0.08) {
-            p.isCleansed = true;
-            p.color = idx % 3 === 0 ? "#86efac" : idx % 3 === 1 ? "#38bdf8" : "#fef08a";
-            p.size = p.baseSize * 1.4;
-            p.vy = -Math.random() * 0.9 - 0.4; // float upward smoothly
-          }
-        }
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-
-        if (p.isCleansed) {
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = p.color;
-        }
-
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.alpha;
-        ctx.fill();
-        ctx.restore();
-      });
-
-      animationFrameId = requestAnimationFrame(render);
-    };
-
-    render();
 
     return () => {
       window.removeEventListener("resize", handleResize);
-      cancelAnimationFrame(animationFrameId);
+      cancelAnimationFrame(raf);
       tl.kill();
     };
-  }, [minDisplayTime, autoDismiss, onComplete]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minDisplayTime, autoDismiss, leaves]);
 
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden select-none pointer-events-none"
+      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden select-none"
+      style={
+        {
+          "--paper-opacity": 0,
+          "--iris": "150%",
+          background: "#e7ddc6",
+          clipPath: "circle(var(--iris) at 50% 44%)",
+        } as React.CSSProperties
+      }
     >
-      {/* Dynamic Sky Atmosphere (Murky Smog -> Crystalline Blue Sky) */}
+      {/* Aged paper base + vignette */}
       <div
-        ref={skyBgRef}
-        className="absolute inset-0 transition-all duration-700 ease-out"
+        className="absolute inset-0"
         style={{
+          opacity: "var(--paper-opacity)" as unknown as number,
+          transition: "opacity 0.4s ease-out",
           background:
-            "radial-gradient(ellipse at 50% 55%, #26241e 0%, #171816 45%, #0d0e0d 100%)",
+            "radial-gradient(ellipse at 50% 42%, #f1e7cf 0%, #e7ddc3 55%, #d8caa8 100%)",
         }}
       />
+      {/* Fine paper grain */}
+      <svg className="absolute inset-0 w-full h-full opacity-[0.05] mix-blend-multiply pointer-events-none">
+        <filter id="grain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" />
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#grain)" />
+      </svg>
 
-      {/* Radiant Sun Glow behind Tree */}
-      <div
-        ref={sunGlowRef}
-        className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full opacity-0 pointer-events-none mix-blend-screen"
-        style={{
-          background:
-            "radial-gradient(circle, rgba(254, 240, 138, 0.7) 0%, rgba(56, 189, 248, 0.35) 45%, transparent 70%)",
-          filter: "blur(45px)",
-        }}
-      />
-
-      {/* Volumetric Rotating Sunbeam Rays */}
-      <div
-        ref={sunBeamsRef}
-        className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1100px] h-[1100px] opacity-0 pointer-events-none mix-blend-screen"
-        style={{
-          background:
-            "conic-gradient(from 0deg at 50% 50%, rgba(254,240,138,0.25) 0deg, transparent 25deg, rgba(56,189,248,0.2) 45deg, transparent 70deg, rgba(254,240,138,0.25) 90deg, transparent 115deg, rgba(56,189,248,0.2) 140deg, transparent 170deg, rgba(254,240,138,0.25) 200deg, transparent 230deg, rgba(56,189,248,0.2) 260deg, transparent 290deg, rgba(254,240,138,0.25) 320deg, transparent 345deg, rgba(254,240,138,0.25) 360deg)",
-          filter: "blur(30px)",
-        }}
-      />
-
-      {/* Ambient Bio-Particles & Smog Canvas */}
+      {/* Ink dust motes */}
       <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-10" />
 
-      {/* Soil Horizon & Gentle Grass Gradient */}
-      <div className="absolute bottom-0 inset-x-0 h-44 bg-gradient-to-t from-[#0a0f0a]/90 via-[#142318]/40 to-transparent pointer-events-none z-10" />
+      {/* Warm bloom light behind the canopy */}
+      <div
+        ref={bloomRef}
+        className="absolute top-[30%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[560px] h-[560px] rounded-full pointer-events-none z-10"
+        style={{
+          background:
+            "radial-gradient(circle, rgba(201,154,59,0.35) 0%, rgba(181,72,46,0.14) 42%, transparent 72%)",
+        }}
+      />
 
-      {/* Center Stage: Organic Tree SVG Metamorphosis */}
-      <div className="relative z-20 w-full max-w-2xl flex items-center justify-center p-4">
+      {/* Center plate */}
+      <div className="relative z-20 w-full max-w-xl flex items-center justify-center p-6">
         <svg
-          ref={treeSvgRef}
+          ref={svgRef}
           viewBox="0 0 500 500"
-          className="w-[340px] h-[340px] sm:w-[460px] sm:h-[460px] filter drop-shadow-[0_25px_50px_rgba(0,0,0,0.45)]"
+          className="w-[300px] h-[300px] sm:w-[420px] sm:h-[420px]"
           xmlns="http://www.w3.org/2000/svg"
         >
           <defs>
-            {/* Organic Bark Gradient */}
-            <linearGradient id="barkGrad" x1="0" y1="1" x2="0" y2="0">
-              <stop offset="0%" stopColor="#1c1917" />
-              <stop offset="40%" stopColor="#292524" />
-              <stop offset="70%" stopColor="#44403c" />
-              <stop offset="100%" stopColor="#15803d" />
-            </linearGradient>
-
-            {/* Branch Gradient */}
-            <linearGradient id="branchGrad" x1="0" y1="1" x2="0.5" y2="0">
-              <stop offset="0%" stopColor="#292524" />
-              <stop offset="60%" stopColor="#44403c" />
-              <stop offset="100%" stopColor="#166534" />
-            </linearGradient>
-
-            {/* Layered Foliage Gradients */}
-            <linearGradient id="leafBgGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#14532d" />
-              <stop offset="100%" stopColor="#052e16" />
-            </linearGradient>
-
-            <linearGradient id="leafMgGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#22c55e" />
-              <stop offset="100%" stopColor="#15803d" />
-            </linearGradient>
-
-            <linearGradient id="leafFgGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#86efac" />
-              <stop offset="50%" stopColor="#4ade80" />
-              <stop offset="100%" stopColor="#16a34a" />
-            </linearGradient>
-
-            <linearGradient id="goldenHighlightGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#fef08a" />
-              <stop offset="40%" stopColor="#86efac" />
-              <stop offset="100%" stopColor="#22c55e" />
-            </linearGradient>
-
-            {/* Organic Soft Foliage Glow */}
-            <filter id="softGlow" x="-25%" y="-25%" width="150%" height="150%">
-              <feGaussianBlur stdDeviation="3.5" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
+            <pattern id="hatch" width="5" height="5" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+              <line x1="0" y1="0" x2="0" y2="5" stroke="#3a332c" strokeWidth="0.7" opacity="0.5" />
+            </pattern>
           </defs>
 
-          {/* Initial Golden Fluttering Sprout / Seed */}
-          <g id="seed-sprout" transform="translate(250, 425)">
-            <path
-              d="M0 0 C-18 -28 -30 -50 0 -68 C30 -50 18 -28 0 0 Z"
-              fill="url(#goldenHighlightGrad)"
-              stroke="#ffffff"
-              strokeWidth="1.5"
-            />
-            <path d="M0 0 L0 -55" stroke="#15803d" strokeWidth="1.2" strokeLinecap="round" />
+          {/* Roots */}
+          <g fill="none" stroke="#3a332c" strokeWidth="1.6" strokeLinecap="round">
+            <path className="ink-line" data-part="root" d="M250 438 Q214 460 168 480 Q136 490 102 493" />
+            <path className="ink-line" data-part="root" d="M250 438 Q284 462 328 481 Q362 490 396 494" />
+            <path className="ink-line" data-part="root" d="M244 440 Q210 452 154 464" />
+            <path className="ink-line" data-part="root" d="M256 440 Q292 454 348 466" />
+            <path className="ink-line" data-part="root" d="M250 440 Q248 470 244 495" />
           </g>
 
-          {/* Root Network with Natural Curvature */}
-          <g className="roots" stroke="#292524" strokeWidth="2.8" fill="none" strokeLinecap="round">
-            <path className="root-path" d="M 250 435 Q 220 460 170 480 Q 140 490 105 492" strokeDasharray="120" />
-            <path className="root-path" d="M 250 435 Q 280 465 330 482 Q 365 490 400 493" strokeDasharray="120" />
-            <path className="root-path" d="M 242 438 Q 210 450 150 462" strokeDasharray="120" />
-            <path className="root-path" d="M 258 438 Q 295 452 355 464" strokeDasharray="120" />
-            <path className="root-path" d="M 250 440 Q 250 470 245 495" strokeDasharray="120" />
+          {/* Trunk — single continuous ink line, tapered by a second offset stroke */}
+          <g fill="none" stroke="#2a241f" strokeWidth="3.2" strokeLinecap="round">
+            <path className="ink-line" data-part="trunk" d="M240 436 C236 350 230 270 246 200" />
+            <path className="ink-line" data-part="trunk" d="M260 436 C264 350 268 270 254 200" />
           </g>
 
-          {/* Tapered Trunk Structure */}
-          <path
-            id="main-trunk"
-            d="M 238 435 C 235 340 228 280 244 220 C 255 220 265 280 262 340 C 265 385 264 435 262 435 Z"
-            fill="url(#barkGrad)"
-          />
-
-          {/* Primary Boughs & Limbs */}
-          <g className="primary-boughs" stroke="url(#branchGrad)" strokeWidth="6.5" fill="none" strokeLinecap="round">
-            <path className="branch-primary" d="M 244 260 Q 185 210 135 180" />
-            <path className="branch-primary" d="M 256 250 Q 315 200 365 175" />
-            <path className="branch-primary" d="M 246 215 Q 195 150 160 115" />
-            <path className="branch-primary" d="M 254 210 Q 305 145 340 110" />
-            <path className="branch-primary" d="M 250 190 Q 250 130 250 85" />
+          {/* Primary boughs */}
+          <g fill="none" stroke="#3a332c" strokeWidth="2" strokeLinecap="round">
+            <path className="ink-line" data-part="primary" d="M246 260 Q188 214 138 182" />
+            <path className="ink-line" data-part="primary" d="M254 250 Q312 202 362 176" />
+            <path className="ink-line" data-part="primary" d="M248 215 Q198 152 162 116" />
+            <path className="ink-line" data-part="primary" d="M252 210 Q302 148 338 112" />
+            <path className="ink-line" data-part="primary" d="M250 195 Q250 132 250 68" />
           </g>
 
-          {/* Secondary Sub-Branches */}
-          <g className="secondary-boughs" stroke="url(#branchGrad)" strokeWidth="3.5" fill="none" strokeLinecap="round">
-            <path className="branch-secondary" d="M 160 195 Q 120 160 90 145" />
-            <path className="branch-secondary" d="M 340 190 Q 380 155 410 140" />
-            <path className="branch-secondary" d="M 180 135 Q 140 100 120 75" />
-            <path className="branch-secondary" d="M 320 130 Q 360 95 380 70" />
-            <path className="branch-secondary" d="M 250 140 Q 215 95 195 70" />
-            <path className="branch-secondary" d="M 250 140 Q 285 95 305 70" />
+          {/* Secondary twigs */}
+          <g fill="none" stroke="#4a4038" strokeWidth="1.1" strokeLinecap="round">
+            <path className="ink-line" data-part="secondary" d="M160 195 Q122 162 92 148" />
+            <path className="ink-line" data-part="secondary" d="M340 190 Q378 158 408 142" />
+            <path className="ink-line" data-part="secondary" d="M180 137 Q142 102 122 78" />
+            <path className="ink-line" data-part="secondary" d="M320 132 Q358 97 378 72" />
+            <path className="ink-line" data-part="secondary" d="M250 142 Q217 98 198 74" />
+            <path className="ink-line" data-part="secondary" d="M250 142 Q283 98 302 74" />
           </g>
 
-          {/* Multi-Layered Photorealistic Foliage Clusters */}
-          {/* Layer 1: Dark Forest Background Depth */}
-          <g className="foliage-bg" filter="url(#softGlow)">
-            <circle className="leaf-bg" cx="250" cy="75" r="35" fill="url(#leafBgGrad)" />
-            <circle className="leaf-bg" cx="215" cy="90" r="30" fill="url(#leafBgGrad)" />
-            <circle className="leaf-bg" cx="285" cy="90" r="30" fill="url(#leafBgGrad)" />
-            <circle className="leaf-bg" cx="155" cy="130" r="32" fill="url(#leafBgGrad)" />
-            <circle className="leaf-bg" cx="115" cy="165" r="34" fill="url(#leafBgGrad)" />
-            <circle className="leaf-bg" cx="345" cy="125" r="32" fill="url(#leafBgGrad)" />
-            <circle className="leaf-bg" cx="385" cy="160" r="34" fill="url(#leafBgGrad)" />
-            <circle className="leaf-bg" cx="250" cy="155" r="38" fill="url(#leafBgGrad)" />
-          </g>
-
-          {/* Layer 2: Midground Emerald Volume */}
-          <g className="foliage-mg" filter="url(#softGlow)">
-            <circle className="leaf-mg" cx="250" cy="80" r="28" fill="url(#leafMgGrad)" />
-            <circle className="leaf-mg" cx="185" cy="105" r="26" fill="url(#leafMgGrad)" />
-            <circle className="leaf-mg" cx="315" cy="100" r="26" fill="url(#leafMgGrad)" />
-            <circle className="leaf-mg" cx="130" cy="145" r="28" fill="url(#leafMgGrad)" />
-            <circle className="leaf-mg" cx="370" cy="140" r="28" fill="url(#leafMgGrad)" />
-            <circle className="leaf-mg" cx="210" cy="150" r="30" fill="url(#leafMgGrad)" />
-            <circle className="leaf-mg" cx="290" cy="145" r="30" fill="url(#leafMgGrad)" />
-            <circle className="leaf-mg" cx="250" cy="180" r="26" fill="url(#leafMgGrad)" />
-          </g>
-
-          {/* Layer 3: Sunlit Specular Foreground Leaves */}
-          <g className="foliage-fg" filter="url(#softGlow)">
-            <circle className="leaf-fg" cx="250" cy="65" r="20" fill="url(#goldenHighlightGrad)" />
-            <circle className="leaf-fg" cx="220" cy="75" r="18" fill="url(#leafFgGrad)" />
-            <circle className="leaf-fg" cx="280" cy="70" r="18" fill="url(#goldenHighlightGrad)" />
-            <circle className="leaf-fg" cx="165" cy="115" r="20" fill="url(#leafFgGrad)" />
-            <circle className="leaf-fg" cx="335" cy="110" r="20" fill="url(#goldenHighlightGrad)" />
-            <circle className="leaf-fg" cx="100" cy="155" r="22" fill="url(#goldenHighlightGrad)" />
-            <circle className="leaf-fg" cx="400" cy="150" r="22" fill="url(#leafFgGrad)" />
-            <circle className="leaf-fg" cx="250" cy="130" r="24" fill="url(#goldenHighlightGrad)" />
-            <circle className="leaf-fg" cx="180" cy="175" r="18" fill="url(#leafFgGrad)" />
-            <circle className="leaf-fg" cx="320" cy="170" r="18" fill="url(#goldenHighlightGrad)" />
-          </g>
+          {/* Leaves — small pointed shapes, hatched, not gradient blobs */}
+          {leaves.map((leaf) => (
+            <g key={leaf.id} className="leaf-pop" transform={`translate(${leaf.x} ${leaf.y}) rotate(${leaf.rot})`}>
+              <g transform={`scale(${leaf.scale})`}>
+                <path d="M0,0 C-6,-6 -6,-17 0,-25 C6,-17 6,-6 0,0 Z" fill={TONE_FILL[leaf.tone]} />
+                <path d="M0,0 C-6,-6 -6,-17 0,-25 C6,-17 6,-6 0,0 Z" fill="url(#hatch)" opacity={0.4} />
+                <path d="M0,-2 L0,-21" stroke="#211c17" strokeWidth="0.5" opacity={0.5} />
+              </g>
+            </g>
+          ))}
         </svg>
       </div>
+
+      {/* Letterpress frame + caption */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none z-30">
+        <g ref={frameRef}>
+          <rect x="28" y="28" width="calc(100% - 56px)" height="calc(100% - 56px)" fill="none" stroke="#3a332c" strokeOpacity="0.35" strokeWidth="1" />
+          <line x1="28" y1="20" x2="28" y2="36" stroke="#3a332c" strokeOpacity="0.35" />
+          <line x1="20" y1="28" x2="36" y2="28" stroke="#3a332c" strokeOpacity="0.35" />
+        </g>
+      </svg>
+
+      {title ? (
+        <div
+          ref={captionRef}
+          className="absolute bottom-[12%] left-1/2 -translate-x-1/2 z-30 text-center"
+          style={{
+            fontFamily: "Georgia, 'Times New Roman', serif",
+            fontStyle: "italic",
+            fontSize: "13px",
+            color: "#3a332c",
+            textTransform: "uppercase",
+          }}
+        >
+          {title}
+        </div>
+      ) : null}
     </div>
   );
 }
