@@ -2,14 +2,11 @@ import axios from 'axios';
 
 export const getBaseUrl = () => {
   let url = process.env.NEXT_PUBLIC_API_URL;
-  if (!url || url === '/api') {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')) {
-      return 'https://greenxchange-backend.onrender.com';
-    }
-    return '';
+  if (!url || url === '/api' || (url.includes('greenxchange-backend') && !url.includes('.onrender.com'))) {
+    return 'https://greenxchange-backend.onrender.com';
   }
   url = url.trim();
-  if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/')) {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = `https://${url}`;
   }
   // Strip trailing slash
@@ -18,7 +15,6 @@ export const getBaseUrl = () => {
 
 const api = axios.create({
   baseURL: getBaseUrl(),
-  withCredentials: true,
 });
 
 api.interceptors.response.use(
@@ -31,8 +27,7 @@ api.interceptors.response.use(
         const rootApi = getBaseUrl();
         const res = await axios.post(
           `${rootApi}/auth/refresh`,
-          {},
-          { withCredentials: true }
+          {}
         );
         const { access_token } = res.data;
         api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
