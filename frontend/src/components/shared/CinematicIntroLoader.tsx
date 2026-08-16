@@ -176,7 +176,7 @@ const TRUNK_X = 500;
 export default function CinematicIntroLoader({
   onComplete,
   autoDismiss = true,
-  minDisplayTime = 4200,
+  minDisplayTime = 5000,
   title = "GreenXchange",
 }: CinematicIntroLoaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);

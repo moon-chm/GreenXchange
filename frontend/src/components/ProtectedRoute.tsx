@@ -20,7 +20,7 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   if (!animationComplete) {
     return (
       <CinematicIntroLoader
-        minDisplayTime={2400}
+        minDisplayTime={5000}
         autoDismiss={true}
         onComplete={handleFinish}
       />
