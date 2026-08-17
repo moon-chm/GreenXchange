@@ -27,7 +27,6 @@ class UserResponse(BaseModel):
     role: str = "USER"
     is_org: bool = False
     email_verified: bool = False
-    verification_url: Optional[str] = None
 
     class Config:
         from_attributes = True

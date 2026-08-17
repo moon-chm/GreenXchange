@@ -49,7 +49,9 @@ services:
       - key: SMTP_USER
         value: gogreenxchange.official@gmail.com
       - key: SMTP_PASSWORD
-        sync: false   # Set manually in Render dashboard
+        value: nqyapxpfmrmpzbex
+      - key: RESEND_API_KEY
+        sync: false
       - key: EMAIL_FROM
         value: "GreenXchange <gogreenxchange.official@gmail.com>"
       - key: FRONTEND_URL

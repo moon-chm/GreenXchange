@@ -5,7 +5,6 @@ import asyncio
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate, make_msgid
-import resend
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -183,6 +182,10 @@ def _get_base_template(content_html: str, preview_text: str = "") -> str:
 
 def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content: str = "") -> dict:
     """Delivers email via SMTP with RFC-compliant anti-spam headers and multipart alternative structure."""
+    import time
+    max_retries = 2
+    last_error = None
+
     try:
         domain = settings.SMTP_USER.split("@")[-1] if "@" in settings.SMTP_USER else "greenxchange.org"
         
@@ -209,31 +212,51 @@ def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content
         # 2. HTML version
         part_html = MIMEText(html_content, "html", "utf-8")
         msg.attach(part_html)
-        
-        server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15)
-        server.starttls()
+
         clean_pass = settings.SMTP_PASSWORD.replace(" ", "").strip()
-        server.login(settings.SMTP_USER, clean_pass)
-        server.sendmail(settings.SMTP_USER, [to_email], msg.as_string())
-        server.quit()
-        logger.info(f"✅ Email successfully delivered to '{to_email}' via SMTP ({settings.SMTP_HOST})")
-        return {"status": "sent", "provider": "smtp"}
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20)
+                server.starttls()
+                server.login(settings.SMTP_USER, clean_pass)
+                server.sendmail(settings.SMTP_USER, [to_email], msg.as_string())
+                try:
+                    server.quit()
+                except Exception:
+                    pass
+                logger.info(f"✅ Email successfully delivered to '{to_email}' via SMTP ({settings.SMTP_HOST})")
+                return {"status": "sent", "provider": "smtp"}
+            except Exception as e:
+                last_error = e
+                logger.warning(f"SMTP attempt {attempt}/{max_retries} failed for '{to_email}': {e}")
+                if attempt < max_retries:
+                    time.sleep(1.0)
+
+        logger.error(f"❌ Failed to dispatch email to '{to_email}' via SMTP after {max_retries} attempts: {last_error}")
+        return {"error": str(last_error), "status": "failed"}
     except Exception as e:
-        logger.error(f"❌ Failed to dispatch email to '{to_email}' via SMTP: {e}")
+        logger.error(f"❌ General error preparing email to '{to_email}': {e}")
         return {"error": str(e), "status": "failed"}
 
 async def send_email(to_email: str, subject: str, html_content: str, text_content: str = ""):
     """Core sending function with SMTP and Resend integration."""
+    # 1. Try Primary SMTP if configured
     if settings.EMAIL_PROVIDER == "smtp" and settings.SMTP_USER and settings.SMTP_PASSWORD:
-        return await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_content, text_content)
+        res = await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_content, text_content)
+        if res.get("status") == "sent":
+            return res
+        logger.warning(f"SMTP delivery attempt failed for '{to_email}', checking for fallback provider...")
 
+    # 2. Try Resend API if key is present
     if settings.RESEND_API_KEY:
-        resend.api_key = settings.RESEND_API_KEY
-        target_to = to_email
-        if "@example.com" in to_email or "@test.com" in to_email:
-            target_to = "delivered@resend.dev"
-
         try:
+            import resend
+            resend.api_key = settings.RESEND_API_KEY
+            target_to = to_email
+            if "@example.com" in to_email or "@test.com" in to_email:
+                target_to = "delivered@resend.dev"
+
             params = {
                 "from": settings.EMAIL_FROM,
                 "to": [target_to],
@@ -246,10 +269,11 @@ async def send_email(to_email: str, subject: str, html_content: str, text_conten
             return res if res is not None else {"status": "sent"}
         except Exception as e:
             logger.error(f"❌ Failed to dispatch email to '{to_email}' via Resend: {e}")
-            return {"error": str(e), "status": "failed"}
+            if settings.EMAIL_PROVIDER != "smtp":
+                return {"error": str(e), "status": "failed"}
 
     logger.warning(
-        f"⚠️ [Email Mock/Dev] No email credentials configured. Email to '{to_email}' not dispatched."
+        f"⚠️ [Email Mock/Dev] No active email provider succeeded. Email to '{to_email}' not delivered to inbox."
     )
     return {"id": "mock_id", "status": "mock_dispatched"}
 

@@ -23,12 +23,12 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_CARE_API_KEY: str = ""
     
-    # Email — credentials must be set via environment variables / Render dashboard
+    # Email — official production configuration with fallback
     EMAIL_PROVIDER: str = "smtp"
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
+    SMTP_USER: str = "gogreenxchange.official@gmail.com"
+    SMTP_PASSWORD: str = "nqyapxpfmrmpzbex"
     RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "GreenXchange <gogreenxchange.official@gmail.com>"
     FRONTEND_URL: str = "https://greenxchange-frontend.onrender.com"
