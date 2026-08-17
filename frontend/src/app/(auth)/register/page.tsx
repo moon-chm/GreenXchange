@@ -106,7 +106,6 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
-  const [verificationUrl, setVerificationUrl] = useState<string | null>(null);
   const reduced = useReducedMotion() ?? false;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -120,10 +119,7 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      const res = await api.post("/auth/register", { name, email, password });
-      if (res.data?.verification_url) {
-        setVerificationUrl(res.data.verification_url);
-      }
+      await api.post("/auth/register", { name, email, password });
       setIsRegistered(true);
     } catch (err: any) {
       if (err.response?.status === 400 || err.response?.status === 409) {
@@ -210,42 +206,27 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <h2 className="text-2xl font-display font-bold text-canopy">Verify Your Email</h2>
-                <p className="text-sm text-canopy/70">
-                  We&apos;ve sent a verification link to <strong>{email}</strong>.
+                <h2 className="text-2xl font-display font-bold text-canopy">Check Your Inbox</h2>
+                <p className="text-sm text-canopy/80">
+                  We&apos;ve sent an account verification email to <strong>{email}</strong>.
                 </p>
-                <p className="text-xs text-canopy/50 pt-1">
-                  Please click the link in your email or click the instant activation button below to begin:
+                <p className="text-xs text-canopy/60 leading-relaxed pt-2">
+                  Please click the link inside your email to activate your account. If you don&apos;t see it within a few moments, please check your spam or promotions folder.
                 </p>
               </div>
 
-              {verificationUrl ? (
-                <div className="space-y-3 pt-2">
-                  <a
-                    href={verificationUrl}
-                    className="inline-flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-xl bg-fern hover:bg-forest text-parchment font-semibold shadow-button transition-all duration-200 text-sm"
-                  >
-                    <Sparkles size={16} />
-                    Activate Account Instantly
-                  </a>
-                  <Link
-                    href="/login"
-                    className="inline-flex items-center justify-center gap-2 w-full px-6 py-2.5 rounded-xl border border-sage/60 hover:bg-sage/10 text-canopy font-medium text-xs transition-all duration-200"
-                  >
-                    Go to Sign In <ArrowRight size={14} />
-                  </Link>
-                </div>
-              ) : (
-                <div className="pt-2">
-                  <Link
-                    href="/login"
-                    className="inline-flex items-center justify-center gap-2 w-full px-6 py-3 rounded-xl bg-fern hover:bg-forest text-parchment font-semibold shadow-button transition-all duration-200 text-sm"
-                  >
-                    Go to Sign In
-                    <ArrowRight size={16} />
-                  </Link>
-                </div>
-              )}
+              <div className="pt-4 border-t border-sage/20 space-y-3">
+                <Link
+                  href="/login"
+                  className="inline-flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-xl bg-fern hover:bg-forest text-parchment font-semibold shadow-button transition-all duration-200 text-sm"
+                >
+                  Go to Sign In
+                  <ArrowRight size={16} />
+                </Link>
+                <p className="text-[11px] text-canopy/50">
+                  Need the link resent? You can request a new verification link from the sign in page.
+                </p>
+              </div>
             </motion.div>
           ) : (
             <>
