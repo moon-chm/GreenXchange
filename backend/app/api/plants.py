@@ -217,7 +217,7 @@ async def get_community_map_trees(
     for row in rows:
         plant = row.Plant
         owner_full_name = row.owner_name or "Citizen"
-        # Protect privacy: extract first name only (e.g. "Rohit Kumbhar" -> "Rohit")
+        # Protect privacy: extract first name only (e.g. "Jane Doe" -> "Jane")
         owner_first_name = owner_full_name.strip().split()[0]
         
         age_days, age_formatted = _format_plant_age(plant.planting_date)
