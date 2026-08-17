@@ -183,6 +183,7 @@ async def _seed_default_orgs():
                 if updated:
                     session.add(existing)
         await session.commit()
+
 app = FastAPI(
     title="GreenXchange API",
     version="1.0.0",

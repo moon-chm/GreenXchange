@@ -11,11 +11,13 @@ import RewardWidget from "@/components/dashboard/RewardWidget";
 import PlantPortfolioPanel from "@/components/dashboard/PlantPortfolioPanel";
 import DrivesPanel from "@/components/dashboard/DrivesPanel";
 import NewsFeedPanel from "@/components/dashboard/NewsFeedPanel";
+import CinematicIntroLoader from "@/components/shared/CinematicIntroLoader";
 import { fadeUp } from "@/lib/motion";
 
 export default function Dashboard() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showCinematic, setShowCinematic] = useState(false);
   const router = useRouter();
   const { user } = useAuth();
   const shouldReduce = useReducedMotion();
@@ -224,6 +226,15 @@ export default function Dashboard() {
           </div>
         </div>
       </motion.header>
+
+      {/* Full-screen Cinematic Metamorphosis Loader Modal */}
+      {showCinematic && (
+        <CinematicIntroLoader
+          autoDismiss={false}
+          minDisplayTime={4500}
+          onComplete={() => setShowCinematic(false)}
+        />
+      )}
 
       {/* Grid container */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
