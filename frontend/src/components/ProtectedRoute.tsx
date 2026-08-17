@@ -16,28 +16,20 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     }
   }, [loading, user, router]);
 
-  // Always allow the full cinematic intro to play its complete metamorphosis
+  // Play the full-screen radial center-to-edge botanical bloom
   if (!animationComplete) {
     return (
       <CinematicIntroLoader
-        minDisplayTime={3600}
+        minDisplayTime={5000}
         autoDismiss={true}
         onComplete={handleFinish}
       />
     );
   }
 
-  // After animation finishes: if not logged in, redirect to login
+  // After animation finishes: if not logged in, navigate immediately without any second loader delay
   if (!user) {
-    return (
-      <div className="min-h-screen bg-parchment flex items-center justify-center">
-        <CinematicIntroLoader
-          minDisplayTime={800}
-          autoDismiss={true}
-          onComplete={() => router.push('/login')}
-        />
-      </div>
-    );
+    return null;
   }
 
   return <>{children}</>;

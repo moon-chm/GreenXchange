@@ -38,6 +38,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Plant species seeding warning (non-fatal): {e}")
 
+    # Seed default government-allocated organization accounts
+    try:
+        await _seed_default_orgs()
+        logger.info("✅ Organization seed check complete.")
+    except Exception as e:
+        logger.warning(f"⚠️ Organization seeding warning (non-fatal): {e}")
+
     yield
 
 async def _seed_default_species():
@@ -110,6 +117,73 @@ async def _seed_default_species():
             session.add(sp)
         await session.commit()
         logger.info(f"✅ Seeded {len(DEFAULT_SPECIES)} default plant species.")
+
+async def _seed_default_orgs():
+    """Ensure default government-allocated organization accounts exist."""
+    import uuid as _uuid
+    from app.db.session import AsyncSessionLocal
+    from app.models.users import User
+    from app.core.security import get_password_hash
+    from sqlalchemy import select as _select
+
+    DEFAULT_ORGS = [
+        {
+            "email": "testorg@nursery.gov.in",
+            "password": "TestOrg123!",
+            "name": "Government Test Nursery Org",
+            "role": "ORGANIZATION",
+            "is_org": True,
+        },
+        {
+            "email": "gov_nursery_delhi@greenxchange.gov.in",
+            "password": "GovNurseryPass2026!",
+            "name": "Delhi Municipal Green Nursery",
+            "role": "ORGANIZATION",
+            "is_org": True,
+        },
+        {
+            "email": "ecocare_partner@greenxchange.org",
+            "password": "EcoPartnerPass2026!",
+            "name": "EcoCare Bio-Services Org",
+            "role": "ORGANIZATION",
+            "is_org": True,
+        },
+    ]
+
+    async with AsyncSessionLocal() as session:
+        for org in DEFAULT_ORGS:
+            result = await session.execute(_select(User).filter(User.email == org["email"]))
+            existing = result.scalars().first()
+            if not existing:
+                new_org = User(
+                    id=_uuid.uuid4(),
+                    email=org["email"],
+                    password_hash=get_password_hash(org["password"]),
+                    name=org["name"],
+                    location_lat=28.6139,
+                    location_lng=77.2090,
+                    role=org["role"],
+                    is_org=org["is_org"],
+                    email_verified=True,
+                    is_active=True,
+                )
+                session.add(new_org)
+                logger.info(f"🌿 Seeded default organization: {org['email']}")
+            else:
+                updated = False
+                if not getattr(existing, "is_org", False):
+                    existing.is_org = True
+                    updated = True
+                if getattr(existing, "role", None) != "ORGANIZATION":
+                    existing.role = "ORGANIZATION"
+                    updated = True
+                if not getattr(existing, "email_verified", False):
+                    existing.email_verified = True
+                    updated = True
+                if updated:
+                    session.add(existing)
+        await session.commit()
+
 app = FastAPI(
     title="GreenXchange API",
     version="1.0.0",
