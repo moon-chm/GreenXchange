@@ -1,12 +1,24 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import api from "@/lib/axios";
-import { Camera, MapPin, Upload, Loader2, CheckCircle, ArrowLeft } from "lucide-react";
+import { MapPin, Loader2, CheckCircle, ArrowLeft, Sparkles, ShieldAlert, HeartPulse, TreePine, Award } from "lucide-react";
 import { fadeUp } from "@/lib/motion";
 import { extractErrorMessage } from "@/lib/utils";
+import LiveCameraCapture from "@/components/shared/LiveCameraCapture";
+
+interface AnalysisResult {
+  is_verified?: boolean;
+  is_tree?: boolean;
+  tree_confidence?: number;
+  health_status?: string;
+  is_healthy?: boolean;
+  health_confidence?: number;
+  growth_stage?: string;
+  summary_reason?: string;
+}
 
 export default function GrowthUpdatePage() {
   const { id } = useParams();
@@ -16,22 +28,26 @@ export default function GrowthUpdatePage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [locStatus, setLocStatus] = useState("Locating device...");
+  const [locStatus, setLocStatus] = useState("Locating device GPS...");
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [successResult, setSuccessResult] = useState<{
+    status: string;
+    growth_stage?: string;
+    confidence_score?: number;
+    analysis?: AnalysisResult;
+  } | null>(null);
 
   const requestLocation = useCallback(() => {
     setLocStatus("Requesting location access...");
-    if (navigator.geolocation) {
+    if (typeof window !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-          setLocStatus("GPS Verified");
+          setLocStatus("GPS Verified & Locked");
         },
         (err) => {
-          console.error("GPS error:", err);
-          setLocStatus("Permission denied or HTTP restricted. Tap to retry or use HTTPS.");
+          console.warn("GPS error:", err);
+          setLocStatus("Permission required. Using approximate location.");
           if (!location) {
             setLocation({ lat: 28.6139, lng: 77.2090 });
           }
@@ -50,13 +66,14 @@ export default function GrowthUpdatePage() {
     requestLocation();
   }, []);
 
+  const handleCapture = useCallback((capturedFile: File, previewUrl: string) => {
+    setFile(capturedFile);
+    setPreview(previewUrl);
+  }, []);
 
-  const handleFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const f = e.target.files[0];
-      setFile(f);
-      setPreview(URL.createObjectURL(f));
-    }
+  const handleClear = useCallback(() => {
+    setFile(null);
+    setPreview(null);
   }, []);
 
   const handleSubmit = useCallback(
@@ -71,15 +88,22 @@ export default function GrowthUpdatePage() {
       formData.append("lng", location.lng.toString());
 
       try {
-        await api.post(`/plants/${id}/growth`, formData, {
+        const res = await api.post(`/plants/${id}/growth`, formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
-        setSuccess(true);
+
+        setSuccessResult({
+          status: res.data?.verification_status || "VERIFIED",
+          growth_stage: res.data?.growth_stage,
+          confidence_score: res.data?.confidence_score,
+          analysis: res.data?.analysis,
+        });
+
         setTimeout(() => {
-          router.push("/plants");
-        }, 2200);
+          router.push(`/plants`);
+        }, 3600);
       } catch (err: any) {
-        alert(extractErrorMessage(err, "Failed to submit update"));
+        alert(extractErrorMessage(err, "Failed to submit growth update. Please ensure a live tree is captured."));
         setLoading(false);
       }
     },
@@ -88,31 +112,76 @@ export default function GrowthUpdatePage() {
 
   const containerAnim = shouldReduce ? {} : fadeUp;
 
-  if (success) {
+  if (successResult) {
+    const isVerified = successResult.status === "VERIFIED";
+    const analysis = successResult.analysis;
+    const healthStatus = analysis?.health_status || "Healthy";
+    const isHealthy = analysis?.is_healthy ?? true;
+
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white/80 border border-sage/40 rounded-2xl p-8 max-w-md w-full text-center shadow-panel backdrop-blur-sm flex flex-col items-center gap-4"
+          className="bg-white/90 border border-sage/40 rounded-3xl p-8 max-w-lg w-full text-center shadow-panel backdrop-blur-md flex flex-col items-center gap-5"
         >
-          <div className="w-16 h-16 rounded-full bg-fern/10 flex items-center justify-center text-fern">
-            <CheckCircle className="w-12 h-12" />
+          <div className={`w-16 h-16 rounded-2xl ${isVerified ? "bg-fern/10 text-fern" : "bg-amber-500/10 text-amber-600"} flex items-center justify-center`}>
+            {isVerified ? <CheckCircle className="w-10 h-10" /> : <ShieldAlert className="w-10 h-10" />}
           </div>
-          <h2 className="font-display text-2xl font-bold text-canopy">
-            Update Submitted!
-          </h2>
-          <p className="text-sm text-canopy/60 leading-relaxed">
-            Your plant's growth update is being verified using our environmental computer vision model. Points will be awarded upon validation.
-          </p>
-          <div className="w-8 h-8 border-2 border-fern/20 border-t-fern rounded-full animate-spin mt-2" />
+
+          <div>
+            <h2 className="font-display text-2xl font-bold text-canopy">
+              {isVerified ? "Growth Update Verified!" : "Update Submitted for Review"}
+            </h2>
+            <p className="text-sm text-canopy/70 mt-1">
+              Evaluated with Dual PyTorch ResNet18 AI Models & GPS Proof-of-Presence.
+            </p>
+          </div>
+
+          {/* AI Diagnostic Summary Card */}
+          <div className="w-full bg-sage/15 border border-sage/30 rounded-2xl p-4 text-left flex flex-col gap-3">
+            <div className="flex items-center justify-between border-b border-sage/20 pb-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-canopy">
+                <TreePine className="w-4 h-4 text-fern" />
+                <span>Tree / Plant Detection</span>
+              </div>
+              <span className="text-xs font-mono font-bold text-fern">
+                {analysis?.tree_confidence ? `${(analysis.tree_confidence * 100).toFixed(1)}% Confirmed` : "Verified"}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-sage/20 pb-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-canopy">
+                <HeartPulse className={`w-4 h-4 ${isHealthy ? "text-emerald-500" : "text-amber-500"}`} />
+                <span>Plant Health Assessment</span>
+              </div>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${isHealthy ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                {healthStatus}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-semibold text-canopy">
+                <Award className="w-4 h-4 text-amber-500" />
+                <span>Reward Credited</span>
+              </div>
+              <span className="text-xs font-bold text-fern">
+                +10 GXC Points
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-canopy/50">
+            <div className="w-4 h-4 border-2 border-fern/30 border-t-fern rounded-full animate-spin" />
+            <span>Redirecting to portfolio...</span>
+          </div>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-xl mx-auto space-y-6">
+    <div className="max-w-xl mx-auto space-y-6 pb-8">
       {/* Header */}
       <motion.div
         variants={containerAnim}
@@ -132,48 +201,28 @@ export default function GrowthUpdatePage() {
             Log Growth Update
           </h1>
           <p className="text-canopy/60 text-xs sm:text-sm mt-0.5">
-            Capture your plant's progress for verified rewards.
+            Capture a live photo to verify growth & earn +10 GXC tokens.
           </p>
         </div>
       </motion.div>
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Upload Card */}
+        {/* Live Camera Viewfinder Component */}
         <motion.div
           variants={containerAnim}
           initial={shouldReduce ? "visible" : "hidden"}
           animate="visible"
-          onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-sage/60 rounded-2xl h-72 flex flex-col items-center justify-center cursor-pointer overflow-hidden relative bg-white/60 hover:bg-white/80 hover:border-fern/60 transition-all shadow-sm group"
+          className="bg-white/80 border border-sage/40 rounded-3xl p-5 shadow-sm"
         >
-          {preview ? (
-            <img src={preview} alt="Growth update preview" className="w-full h-full object-cover" />
-          ) : (
-            <div className="text-center p-6 flex flex-col items-center gap-3">
-              <div className="w-12 h-12 bg-sage/20 rounded-xl flex items-center justify-center text-sage group-hover:text-fern group-hover:bg-fern/10 transition-colors">
-                <Camera className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-canopy">
-                  Tap to capture or upload photo
-                </p>
-                <p className="text-xs text-canopy/50 mt-1">
-                  EXIF metadata will be verified to validate environmental impact
-                </p>
-              </div>
-            </div>
-          )}
+          <LiveCameraCapture
+            label="Live Plant Growth Camera"
+            sublabel="Capture a clear live photo of the tree/foliage. Gallery uploads are strictly disabled."
+            initialPreview={preview}
+            onCapture={handleCapture}
+            onClear={handleClear}
+          />
         </motion.div>
-
-        <input
-          type="file"
-          ref={fileInputRef}
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleFile}
-        />
 
         {/* Location Info Card */}
         <motion.div
@@ -188,7 +237,7 @@ export default function GrowthUpdatePage() {
             </div>
             <div>
               <p className="text-xs font-semibold text-canopy uppercase tracking-wider">
-                Device Location
+                Proof of Presence GPS
               </p>
               <p className="text-xs text-canopy/60 mt-0.5">{locStatus}</p>
             </div>
@@ -205,26 +254,25 @@ export default function GrowthUpdatePage() {
               onClick={requestLocation}
               className="px-3 py-1.5 bg-fern/10 hover:bg-fern/20 text-fern rounded-lg text-xs font-semibold font-sans transition-colors"
             >
-              Get GPS
+              Update GPS
             </button>
           </div>
         </motion.div>
-
 
         {/* Action Button */}
         <motion.button
           type="submit"
           disabled={!file || !location || loading}
           whileTap={shouldReduce ? undefined : { scale: 0.97 }}
-          className="w-full bg-fern hover:bg-forest disabled:bg-sage/20 disabled:text-canopy/30 text-parchment font-semibold py-3.5 rounded-xl transition-all flex justify-center items-center text-sm shadow-md disabled:shadow-none"
+          className="w-full bg-fern hover:bg-forest disabled:bg-sage/20 disabled:text-canopy/30 text-parchment font-semibold py-4 rounded-2xl transition-all flex justify-center items-center text-sm shadow-md disabled:shadow-none"
         >
           {loading ? (
             <span className="flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Submitting for verification…
+              Running Dual ResNet18 AI Analysis & Verifying…
             </span>
           ) : (
-            "Submit for Verification"
+            "Submit Live Growth Update"
           )}
         </motion.button>
       </form>

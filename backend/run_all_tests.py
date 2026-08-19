@@ -13,7 +13,8 @@ TEST_FILES = [
     "test_phase14.py",
     "test_phase15_org_payments.py",
     "test_phase16_email.py",
-    "test_phase17_community_map.py"
+    "test_phase17_community_map.py",
+    "test_cv_models.py"
 ]
 
 def run_test(test_file):

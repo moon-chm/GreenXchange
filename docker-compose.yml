@@ -68,6 +68,7 @@ services:
     volumes:
       - ./backend:/app
       - ./ml_model:/app/ml_model:ro
+      - "./ALL MODELS:/app/models:ro"
     depends_on:
       db:
         condition: service_healthy
@@ -94,10 +95,13 @@ services:
     volumes:
       - ./backend:/app
       - ./ml_model:/app/ml_model:ro
+      - "./ALL MODELS:/app/models:ro"
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     command: celery -A app.worker.celery_app worker --loglevel=info
 

@@ -1,6 +1,6 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -448,3 +448,26 @@ async def generate_nursery_care_guide(
     )
 
 
+@router.post("/ai-verify")
+async def ai_verify_image(
+    image: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Direct endpoint for real-time Dual PyTorch AI Model evaluation:
+    - Model 1: Tree / Plant detection
+    - Model 2: Plant Health assessment
+    - ELA & Growth Stage analysis
+    """
+    from app.services.cv.models import get_cv_model
+    try:
+        image_bytes = await image.read()
+        cv_model = get_cv_model()
+        analysis = cv_model.analyze_plant_image(image_bytes)
+        return {
+            "status": "success",
+            "analysis": analysis
+        }
+    except Exception as e:
+        logger.error(f"AI verify endpoint error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Image verification failed: {str(e)}")

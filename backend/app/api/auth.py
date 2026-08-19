@@ -21,19 +21,25 @@ logger = logging.getLogger("auth")
 router = APIRouter()
 
 def _get_request_base_url(request: Request) -> str:
-    """Detects if request originated from mobile IP, localhost, or production domain."""
+    """Detects the frontend URL from request origin, referer, or configured FRONTEND_URL."""
     origin = request.headers.get("origin")
-    if origin:
+    if origin and ":8000" not in origin and "backend" not in origin:
         return origin.rstrip("/")
     referer = request.headers.get("referer")
     if referer:
         from urllib.parse import urlparse
         p = urlparse(referer)
-        return f"{p.scheme}://{p.netloc}".rstrip("/")
-    host = request.headers.get("host")
-    if host:
-        proto = request.headers.get("x-forwarded-proto", "https")
-        return f"{proto}://{host}".rstrip("/")
+        if ":8000" not in p.netloc and "backend" not in p.netloc:
+            return f"{p.scheme}://{p.netloc}".rstrip("/")
+    
+    host = request.headers.get("host", "")
+    if "localhost:3000" in host or "127.0.0.1:3000" in host:
+        return "http://localhost:3000"
+    if host.startswith("localhost") or host.startswith("127.0.0.1"):
+        if ":8000" not in host:
+            return f"http://{host}".rstrip("/")
+        return "http://localhost:3000"
+
     return settings.FRONTEND_URL.rstrip("/")
 
 @router.post("/register", response_model=UserResponse)

@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "GreenXchange <gogreenxchange.official@gmail.com>"
     FRONTEND_URL: str = "https://greenxchange-frontend.onrender.com"
 
+    # Computer Vision AI Models
+    TREE_MODEL_PATH: str = ""
+    PLANT_HEALTH_MODEL_PATH: str = ""
+
     @property
     def jwt_private_key(self) -> str:
         if not self.JWT_PRIVATE_KEY_B64:

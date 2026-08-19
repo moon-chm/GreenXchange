@@ -257,6 +257,20 @@ for router_obj, prefix in routers_list:
     app.include_router(router_obj, prefix=f"/api/{prefix}", tags=[prefix])
     app.include_router(router_obj, prefix=f"/{prefix}", tags=[prefix])
 
+from fastapi.responses import JSONResponse, RedirectResponse
+
+@app.get("/verify-email")
+async def root_verify_email_redirect(token: str = ""):
+    """Redirects direct browser visits on the backend domain to the frontend verification UI."""
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    return RedirectResponse(url=f"{frontend_url}/verify-email?token={token}")
+
+@app.get("/reset-password")
+async def root_reset_password_redirect(token: str = ""):
+    """Redirects direct browser visits on the backend domain to the frontend password reset UI."""
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    return RedirectResponse(url=f"{frontend_url}/reset-password?token={token}")
+
 @app.get("/")
 def root():
     return {"message": "GreenXchange API", "status": "online", "version": "1.0.0"}

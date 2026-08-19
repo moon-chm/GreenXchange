@@ -79,19 +79,27 @@ async def run_verification(update_id_str: str):
             response.close()
             response.release_conn()
             
-            ela_res = cv_model.check_ela(image_bytes)
-            plant_res = cv_model.detect_plant(image_bytes)
-            stage_res = cv_model.classify_growth_stage(image_bytes)
+            # Run comprehensive 4-pillar dual PyTorch CV verification
+            analysis = cv_model.analyze_plant_image(image_bytes)
             
-            is_verified = False
-            if ela_res.get("pass") and plant_res.get("pass") and stage_res.get("pass"):
+            is_verified = analysis.get("is_verified", False)
+            tree_conf = analysis.get("tree_confidence", 0.95)
+            health_status = analysis.get("health_status", "Healthy")
+            growth_stage = analysis.get("growth_stage", "Vegetative")
+            summary_reason = analysis.get("summary_reason", "")
+            
+            if is_verified:
                 update.verification_status = VerificationStatus.VERIFIED
-                update.confidence_score = stage_res.get("confidence", 0.99)
-                update.growth_stage_label = stage_res.get("stage", "Unknown")
-                is_verified = True
+                update.confidence_score = round(tree_conf, 4)
+                update.growth_stage_label = f"{growth_stage} ({health_status})"
+                update.cv_model_version = "resnet18-dual-v1"
+                update.rejection_reason = None
             else:
                 update.verification_status = VerificationStatus.REJECTED
-                update.rejection_reason = "CV checks failed"
+                update.confidence_score = round(tree_conf, 4)
+                update.growth_stage_label = growth_stage
+                update.cv_model_version = "resnet18-dual-v1"
+                update.rejection_reason = summary_reason or "Automated CV verification checks failed"
                 
             await session.commit()
             

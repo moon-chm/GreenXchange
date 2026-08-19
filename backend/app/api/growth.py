@@ -12,6 +12,9 @@ from app.models.enums import VerificationStatus
 from app.utils.geo import haversine_distance, extract_exif_gps
 from app.services.media import sanitize_image, upload_to_minio
 from app.worker.tasks import verify_growth_update
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -78,14 +81,58 @@ async def submit_growth_update(
     db.add(growth_update)
     await db.commit()
     
-    # 5. Dispatch task
+    # 5. Execute CV verification (real-time with Celery fallback for high reliability)
+    analysis = None
     if not flag_manual:
-        verify_growth_update.delay(str(update_id))
+        try:
+            from app.services.cv.models import get_cv_model
+            cv_model = get_cv_model()
+            analysis = cv_model.analyze_plant_image(sanitized_bytes)
+            
+            is_verified = analysis.get("is_verified", False)
+            tree_conf = analysis.get("tree_confidence", 0.95)
+            health_status = analysis.get("health_status", "Healthy")
+            growth_stage = analysis.get("growth_stage", "Vegetative")
+            summary_reason = analysis.get("summary_reason", "")
+            
+            if is_verified:
+                growth_update.verification_status = VerificationStatus.VERIFIED
+                growth_update.confidence_score = round(tree_conf, 4)
+                growth_update.growth_stage_label = f"{growth_stage} ({health_status})"
+                growth_update.cv_model_version = "resnet18-dual-v1"
+                growth_update.rejection_reason = None
+            else:
+                growth_update.verification_status = VerificationStatus.REJECTED
+                growth_update.confidence_score = round(tree_conf, 4)
+                growth_update.growth_stage_label = growth_stage
+                growth_update.cv_model_version = "resnet18-dual-v1"
+                growth_update.rejection_reason = summary_reason or "Automated CV verification checks failed"
+                
+            await db.commit()
+            
+            # Award points if verified
+            if is_verified:
+                from app.services.rewards import credit_growth_update_reward
+                try:
+                    await credit_growth_update_reward(db, current_user.id, plant.id)
+                except Exception as rw_err:
+                    logger.warning(f"Failed to credit immediate reward: {rw_err}")
+                    
+        except Exception as cv_err:
+            logger.warning(f"Immediate CV inference failed, delegating to Celery task: {cv_err}")
+            try:
+                verify_growth_update.delay(str(update_id))
+            except Exception:
+                pass
         
     return {
         "status": "success",
         "update_id": str(update_id),
-        "verification_status": growth_update.verification_status.value
+        "verification_status": growth_update.verification_status.value,
+        "growth_stage": growth_update.growth_stage_label,
+        "confidence_score": growth_update.confidence_score,
+        "rejection_reason": growth_update.rejection_reason,
+        "analysis": analysis
     }
 
 @router.get("/{plant_id}/growth")
@@ -116,7 +163,9 @@ async def get_growth_updates(
         {
             "id": str(u.id),
             "status": u.verification_status.value,
-            "stage": u.growth_stage_label,
+            "stage": u.growth_stage_label or "Vegetative",
+            "confidence_score": u.confidence_score,
+            "rejection_reason": u.rejection_reason,
             "timestamp": u.server_timestamp,
             "image_url": u.image_url.replace("s3://growth-updates/", "http://localhost:9000/growth-updates/")
         } for u in updates

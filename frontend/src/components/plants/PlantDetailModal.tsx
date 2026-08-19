@@ -26,6 +26,8 @@ interface GrowthUpdate {
   stage: string | null;
   timestamp: string;
   image_url: string;
+  confidence_score?: number | null;
+  rejection_reason?: string | null;
 }
 
 interface PlantDetailModalProps {
@@ -395,7 +397,17 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
                             <h4 className="font-display font-semibold text-canopy text-sm mt-1">
                               {update.stage || "Unidentified Stage"}
                             </h4>
-                            <p className="text-[10px] text-canopy/50 truncate">Update ID: {update.id.substring(0, 8)}...</p>
+                            {update.confidence_score !== undefined && update.confidence_score !== null && (
+                              <p className="text-[10px] text-fern font-mono font-medium">
+                                AI Confidence: {(update.confidence_score * 100).toFixed(1)}%
+                              </p>
+                            )}
+                            {update.rejection_reason && (
+                              <p className="text-[10px] text-red-600 line-clamp-1" title={update.rejection_reason}>
+                                {update.rejection_reason}
+                              </p>
+                            )}
+                            <p className="text-[9px] text-canopy/40 truncate">ID: {update.id.substring(0, 8)}...</p>
                           </div>
                         </div>
                       </div>

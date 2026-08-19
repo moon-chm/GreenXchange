@@ -6,6 +6,7 @@ import api from "@/lib/axios";
 import { extractErrorMessage } from "@/lib/utils";
 
 import { Camera, Sparkles, AlertCircle, Globe, Upload, Image as ImageIcon } from "lucide-react";
+import LiveCameraCapture from "@/components/shared/LiveCameraCapture";
 
 interface PlantRegistrationModalProps {
   isOpen: boolean;
@@ -467,45 +468,18 @@ export default function PlantRegistrationModal({
               )}
 
               {step === 2 && (
-                <motion.div key="step2" {...(stepAnim as any)} className="flex flex-col gap-4">
-                  <label className={labelClass}>
-                    Plant Photo <span className="text-red-500">*</span>
-                  </label>
-                  <p className="text-xs text-canopy/60 font-sans -mt-1">
-                    Upload or snap a clear photo of your plant for AI verification & asset card display.
-                  </p>
-
-                  <div className="relative border-2 border-dashed border-sage/60 rounded-2xl p-6 bg-white/60 hover:bg-white/90 hover:border-fern/50 transition-all flex flex-col items-center justify-center gap-3 text-center cursor-pointer group">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageFileChange}
-                      className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                    />
-
-                    {formData.image_url ? (
-                      <div className="relative w-full h-44 rounded-xl overflow-hidden shadow-inner border border-sage/30">
-                        <img
-                          src={formData.image_url}
-                          alt="Plant Preview"
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-canopy/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-semibold">
-                          Click to Change Photo
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="w-12 h-12 rounded-2xl bg-fern/10 text-fern flex items-center justify-center group-hover:scale-110 transition-transform">
-                          <Camera size={26} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-canopy">Take Photo or Choose File</p>
-                          <p className="text-[11px] text-canopy/50 mt-0.5 font-sans">Supports JPG, PNG, WEBP up to 10MB</p>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                <motion.div key="step2" {...(stepAnim as any)} className="flex flex-col gap-3">
+                  <LiveCameraCapture
+                    label="Live Plant Registration Photo"
+                    sublabel="Strictly live camera capture required. Align the plant/tree inside the target frame."
+                    initialPreview={formData.image_url}
+                    onCapture={(_file, previewUrl) => {
+                      setFormData((prev) => ({ ...prev, image_url: previewUrl }));
+                    }}
+                    onClear={() => {
+                      setFormData((prev) => ({ ...prev, image_url: "" }));
+                    }}
+                  />
                 </motion.div>
               )}
 
