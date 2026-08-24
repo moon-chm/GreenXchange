@@ -1,6 +1,8 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { Camera } from "lucide-react";
 import { staggerItem } from "@/lib/motion";
 import StatusBadge from "@/components/shared/StatusBadge";
 import LeafIcon from "@/components/icons/LeafIcon";
@@ -64,6 +66,7 @@ function formatDate(dateString: string): string {
 }
 
 export default function PlantCard({ plant, onClick }: PlantCardProps) {
+  const router = useRouter();
   const shouldReduceMotion = useReducedMotion();
 
   const cardVariants = shouldReduceMotion
@@ -108,7 +111,6 @@ export default function PlantCard({ plant, onClick }: PlantCardProps) {
         )}
       </div>
 
-
       {/* Plant info */}
       <div className="flex flex-col gap-0.5 pr-20">
         <h3 className="font-display text-lg font-semibold text-canopy leading-tight">
@@ -128,14 +130,24 @@ export default function PlantCard({ plant, onClick }: PlantCardProps) {
       </p>
 
       {/* Footer row */}
-      <div className="flex items-center justify-between mt-auto pt-1 border-t border-sage/20">
+      <div className="flex items-center justify-between mt-auto pt-2 border-t border-sage/20">
         <span className="flex items-center gap-1.5 text-fern text-sm font-medium">
           <CoinsIcon size={15} />
           {displayPoints.toLocaleString()} pts
         </span>
-        <span className="text-xs text-canopy/50">
-          {formatDate(displayDate)}
-        </span>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            router.push(`/plants/${plant.id}/growth`);
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-fern/10 hover:bg-fern text-fern hover:text-white text-xs font-semibold transition-all border border-fern/30 shadow-xs"
+          title="Upload Growth Photo & Verify"
+        >
+          <Camera size={13} />
+          <span>Log Growth</span>
+        </button>
       </div>
     </motion.div>
   );

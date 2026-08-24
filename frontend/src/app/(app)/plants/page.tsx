@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Plus, Grid, Map as MapIcon, Sparkles, HeartHandshake } from "lucide-react";
+import { Plus, Grid, Map as MapIcon, Sparkles, Camera, X, ArrowRight, TreePine } from "lucide-react";
 import dynamic from "next/dynamic";
 import api from "@/lib/axios";
 import PlantCard from "@/components/plants/PlantCard";
@@ -33,6 +34,7 @@ interface Plant {
 }
 
 export default function PlantsPage() {
+  const router = useRouter();
   const [plants, setPlants] = useState<Plant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export default function PlantsPage() {
   const [selectedPlant, setSelectedPlant] = useState<Plant | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isCareModalOpen, setIsCareModalOpen] = useState(false);
+  const [isGrowthSelectOpen, setIsGrowthSelectOpen] = useState(false);
   const [careTargetPlant, setCareTargetPlant] = useState<string>("");
   const shouldReduce = useReducedMotion();
 
@@ -121,7 +124,24 @@ export default function PlantsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <motion.button
+            whileTap={shouldReduce ? undefined : { scale: 0.97 }}
+            onClick={() => {
+              if (plants.length === 1) {
+                router.push(`/plants/${plants[0].id}/growth`);
+              } else if (plants.length > 1) {
+                setIsGrowthSelectOpen(true);
+              } else {
+                setIsModalOpen(true);
+              }
+            }}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-fern hover:from-emerald-700 hover:to-forest text-parchment px-4 py-3 rounded-xl text-sm font-semibold transition-all shadow-md shadow-fern/20 w-full sm:w-auto"
+          >
+            <Camera size={16} />
+            Log Growth Photo
+          </motion.button>
+
           <motion.button
             whileTap={shouldReduce ? undefined : { scale: 0.97 }}
             onClick={() => handleOpenCareAI()}
@@ -322,6 +342,71 @@ export default function PlantsPage() {
         userPlants={userPlantOptions}
         defaultPlantName={careTargetPlant}
       />
+
+      {/* Quick Select Plant for Growth Update Modal */}
+      <AnimatePresence>
+        {isGrowthSelectOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-canopy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setIsGrowthSelectOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-parchment rounded-3xl max-w-md w-full p-6 shadow-2xl border border-sage/40 flex flex-col gap-4 max-h-[85vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-sage/20 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-fern/10 text-fern flex items-center justify-center">
+                    <Camera size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-canopy text-lg">Select Plant to Verify</h3>
+                    <p className="text-xs text-canopy/60">Choose which plant you are photographing</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsGrowthSelectOpen(false)}
+                  className="p-1.5 rounded-xl bg-white/80 text-canopy/50 hover:text-canopy"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2 overflow-y-auto max-h-[50vh] pr-1">
+                {plants.map((plant) => (
+                  <button
+                    key={plant.id}
+                    onClick={() => {
+                      setIsGrowthSelectOpen(false);
+                      router.push(`/plants/${plant.id}/growth`);
+                    }}
+                    className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-white/80 hover:bg-white border border-sage/30 hover:border-fern/60 text-left transition-all shadow-xs group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-sage/15 flex items-center justify-center text-fern shrink-0 group-hover:bg-fern/10 transition-colors">
+                        <TreePine size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-display font-semibold text-canopy text-sm">
+                          {plant.common_name || plant.species_name}
+                        </h4>
+                        <p className="text-[11px] text-canopy/50 font-mono">ID: {plant.scan_id}</p>
+                      </div>
+                    </div>
+                    <ArrowRight size={16} className="text-canopy/30 group-hover:text-fern group-hover:translate-x-0.5 transition-all" />
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
