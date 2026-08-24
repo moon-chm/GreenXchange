@@ -88,24 +88,24 @@ class PyTorchCVModel(CVModel):
         else:
             self.transform = None
 
-        # Resolve model paths
+        # Resolve model paths — production Docker path checked first
         self.tree_model_path = self._resolve_model_path(
             tree_model_path or os.getenv("TREE_MODEL_PATH"),
             [
-                os.path.join(os.path.dirname(__file__), "..", "..", "..", "ALL MODELS", "model1", "tree_detector_resnet18.pth"),
-                "/app/models/model1/tree_detector_resnet18.pth",
-                r"E:\GreenXchange\ALL MODELS\model1\tree_detector_resnet18.pth",
-                os.path.join(os.path.dirname(__file__), "..", "..", "assets", "models", "tree_detector_resnet18.pth"),
+                "/app/models/model1/tree_detector_resnet18.pth",                              # Docker/Render (production)
+                os.path.join(os.path.dirname(__file__), "..", "..", "..", "backend", "models", "model1", "tree_detector_resnet18.pth"),  # Local dev (backend/models/)
+                os.path.join(os.path.dirname(__file__), "..", "..", "..", "ALL MODELS", "model1", "tree_detector_resnet18.pth"),         # Local dev (ALL MODELS/)
+                r"E:\GreenXchange\ALL MODELS\model1\tree_detector_resnet18.pth",              # Windows absolute fallback
             ]
         )
 
         self.health_model_path = self._resolve_model_path(
             health_model_path or os.getenv("PLANT_HEALTH_MODEL_PATH"),
             [
-                os.path.join(os.path.dirname(__file__), "..", "..", "..", "ALL MODELS", "model 2", "new-plant_health_resnet18_balanced.pth"),
-                "/app/models/model 2/new-plant_health_resnet18_balanced.pth",
-                r"E:\GreenXchange\ALL MODELS\model 2\new-plant_health_resnet18_balanced.pth",
-                os.path.join(os.path.dirname(__file__), "..", "..", "assets", "models", "new-plant_health_resnet18_balanced.pth"),
+                "/app/models/model 2/new-plant_health_resnet18_balanced.pth",                              # Docker/Render (production)
+                os.path.join(os.path.dirname(__file__), "..", "..", "..", "backend", "models", "model 2", "new-plant_health_resnet18_balanced.pth"),  # Local dev
+                os.path.join(os.path.dirname(__file__), "..", "..", "..", "ALL MODELS", "model 2", "new-plant_health_resnet18_balanced.pth"),         # Local dev (ALL MODELS/)
+                r"E:\GreenXchange\ALL MODELS\model 2\new-plant_health_resnet18_balanced.pth", # Windows absolute fallback
             ]
         )
 
@@ -130,7 +130,7 @@ class PyTorchCVModel(CVModel):
             try:
                 model = tv_models.resnet18()
                 model.fc = nn.Linear(model.fc.in_features, 2)
-                state_dict = torch.load(self.tree_model_path, map_location=self.device)
+                state_dict = torch.load(self.tree_model_path, map_location=self.device, weights_only=True)
                 model.load_state_dict(state_dict)
                 model.to(self.device)
                 model.eval()
@@ -149,7 +149,7 @@ class PyTorchCVModel(CVModel):
                     nn.Dropout(p=0.3),
                     nn.Linear(model.fc.in_features, 2)
                 )
-                state_dict = torch.load(self.health_model_path, map_location=self.device)
+                state_dict = torch.load(self.health_model_path, map_location=self.device, weights_only=True)
                 model.load_state_dict(state_dict)
                 model.to(self.device)
                 model.eval()

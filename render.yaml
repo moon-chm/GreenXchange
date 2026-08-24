@@ -21,7 +21,7 @@ services:
   - type: web
     name: greenxchange-backend
     env: docker
-    plan: free
+    plan: starter          # $7/mo — required for PyTorch + model RAM (512 MB free tier insufficient)
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     envVars:
@@ -34,12 +34,22 @@ services:
           type: redis
           name: greenxchange-redis
           property: connectionString
+
+      # ── Auth ──────────────────────────────────────────────────
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
-        value: HS256
+        value: RS256                   # Fixed: was HS256, code uses RS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: 30
+
+      # ── JWT RS256 Keys (set manually in Render dashboard) ─────
+      - key: JWT_PRIVATE_KEY_B64
+        sync: false
+      - key: JWT_PUBLIC_KEY_B64
+        sync: false
+
+      # ── Email ─────────────────────────────────────────────────
       - key: EMAIL_PROVIDER
         value: smtp
       - key: SMTP_HOST
@@ -49,17 +59,25 @@ services:
       - key: SMTP_USER
         value: gogreenxchange.official@gmail.com
       - key: SMTP_PASSWORD
-        value: nqyapxpfmrmpzbex
+        sync: false                    # Set in Render dashboard (app password)
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
         value: "GreenXchange <gogreenxchange.official@gmail.com>"
       - key: FRONTEND_URL
         value: https://greenxchange-frontend.onrender.com
+
+      # ── AI / Groq ─────────────────────────────────────────────
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_CARE_API_KEY
         sync: false
+
+      # ── CV Model Paths (bundled in Docker image at /app/models/) ──
+      - key: TREE_MODEL_PATH
+        value: /app/models/model1/tree_detector_resnet18.pth
+      - key: PLANT_HEALTH_MODEL_PATH
+        value: /app/models/model 2/new-plant_health_resnet18_balanced.pth
 
   # -------------------------------------------------------------
   # 3. Redis Service

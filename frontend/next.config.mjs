@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Standalone output for Docker multi-stage production builds
+  output: 'standalone',
   eslint: {
     ignoreDuringBuilds: true,
   },

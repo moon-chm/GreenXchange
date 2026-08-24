@@ -54,6 +54,7 @@ async def register_plant(
         logger.warning(f"Rate limiter warning on plant register: {e}")
 
     plant_name = (req.common_name or "").strip()
+    species = None  # initialize before conditional lookup
 
     # 1. If species_id provided, check if it matches
     if req.species_id and str(req.species_id).strip():

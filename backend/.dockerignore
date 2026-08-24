@@ -23,3 +23,7 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 alembic/versions/
+ml_model/
+
+# NOTE: models/ directory (.pth files) is intentionally NOT excluded here.
+# Both ResNet18 model weights are bundled inside the Docker image for production.
