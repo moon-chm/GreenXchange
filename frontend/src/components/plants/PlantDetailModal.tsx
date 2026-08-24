@@ -334,11 +334,20 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
 
             {/* Right Column: Growth Timeline */}
             <div className="flex-1 p-6 md:p-8 bg-sage/5 overflow-y-auto flex flex-col gap-5 max-h-[45vh] md:max-h-full">
-              <div className="flex items-center gap-2">
-                <Camera size={18} className="text-fern" />
-                <h3 className="font-display text-lg font-semibold text-canopy">
-                  Growth Timeline
-                </h3>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Camera size={18} className="text-fern" />
+                  <h3 className="font-display text-lg font-semibold text-canopy">
+                    Growth Timeline
+                  </h3>
+                </div>
+                <a
+                  href={`/plants/${plant.id}/growth`}
+                  className="inline-flex items-center gap-1.5 bg-fern hover:bg-forest text-parchment text-xs font-semibold px-3 py-1.5 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
+                >
+                  <Camera size={13} />
+                  <span>Upload Photo</span>
+                </a>
               </div>
 
               {loadingUpdates ? (
