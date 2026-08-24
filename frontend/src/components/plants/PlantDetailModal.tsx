@@ -70,6 +70,12 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
     setDeleteError(null);
 
     api.get<GrowthUpdate[]>(`/plants/${plant.id}/growth`)
+      .catch((err) => {
+        if (err?.response?.status === 404) {
+          return api.get<GrowthUpdate[]>(`/growth/${plant.id}/growth`);
+        }
+        throw err;
+      })
       .then((res) => {
         setGrowthUpdates(res.data ?? []);
       })

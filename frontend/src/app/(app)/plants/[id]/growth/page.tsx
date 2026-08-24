@@ -86,16 +86,42 @@ export default function GrowthUpdatePage() {
       formData.append("lng", activeCoords.lng.toString());
 
       try {
-        const res = await api.post(`/plants/${id}/growth`, formData, {
-          headers: { "Content-Type": undefined },
-          timeout: 90000,
-        });
+        let res;
+        try {
+          // 1. Primary route on latest backend
+          res = await api.post(`/plants/${id}/growth`, formData, {
+            headers: { "Content-Type": undefined },
+            timeout: 90000,
+          });
+        } catch (err1: any) {
+          if (err1?.response?.status === 404) {
+            try {
+              // 2. Fallback to /growth/{id}/growth for legacy active backend
+              res = await api.post(`/growth/${id}/growth`, formData, {
+                headers: { "Content-Type": undefined },
+                timeout: 90000,
+              });
+            } catch (err2: any) {
+              if (err2?.response?.status === 404) {
+                // 3. Fallback to /growth/{id}
+                res = await api.post(`/growth/${id}`, formData, {
+                  headers: { "Content-Type": undefined },
+                  timeout: 90000,
+                });
+              } else {
+                throw err2;
+              }
+            }
+          } else {
+            throw err1;
+          }
+        }
 
         setSuccessResult({
-          status: res.data?.verification_status || "VERIFIED",
-          growth_stage: res.data?.growth_stage,
-          confidence_score: res.data?.confidence_score,
-          analysis: res.data?.analysis,
+          status: res?.data?.verification_status || "VERIFIED",
+          growth_stage: res?.data?.growth_stage,
+          confidence_score: res?.data?.confidence_score,
+          analysis: res?.data?.analysis,
         });
 
         setTimeout(() => {

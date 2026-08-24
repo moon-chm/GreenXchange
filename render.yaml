@@ -21,7 +21,7 @@ services:
   - type: web
     name: greenxchange-backend
     env: docker
-    plan: starter          # $7/mo — required for PyTorch + model RAM (512 MB free tier insufficient)
+    plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     envVars:
