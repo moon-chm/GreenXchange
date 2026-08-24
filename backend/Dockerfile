@@ -53,15 +53,17 @@ ARG MODEL_RELEASE_TAG=v1.0-models
 RUN mkdir -p /app/models/model1 "/app/models/model 2"
 
 RUN echo "Downloading Tree Detector model (Model 1)..." && \
-    curl -fL --retry 3 --retry-delay 5 \
+    (curl -fL --retry 2 --connect-timeout 10 \
     "https://github.com/${GITHUB_REPO}/releases/download/${MODEL_RELEASE_TAG}/tree_detector_resnet18.pth" \
     -o /app/models/model1/tree_detector_resnet18.pth && \
-    echo "Model 1 downloaded: $(du -sh /app/models/model1/tree_detector_resnet18.pth | cut -f1)"
+    echo "Model 1 downloaded successfully: $(du -sh /app/models/model1/tree_detector_resnet18.pth | cut -f1)") || \
+    echo "Notice: Model 1 release not found or offline. Backend will use fallback vegetation detection until release is published."
 
 RUN echo "Downloading Plant Health model (Model 2)..." && \
-    curl -fL --retry 3 --retry-delay 5 \
+    (curl -fL --retry 2 --connect-timeout 10 \
     "https://github.com/${GITHUB_REPO}/releases/download/${MODEL_RELEASE_TAG}/new-plant_health_resnet18_balanced.pth" \
     -o "/app/models/model 2/new-plant_health_resnet18_balanced.pth" && \
-    echo "Model 2 downloaded: $(du -sh "/app/models/model 2/new-plant_health_resnet18_balanced.pth" | cut -f1)"
+    echo "Model 2 downloaded successfully: $(du -sh "/app/models/model 2/new-plant_health_resnet18_balanced.pth" | cut -f1)") || \
+    echo "Notice: Model 2 release not found or offline. Backend will use baseline health scoring until release is published."
 
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
