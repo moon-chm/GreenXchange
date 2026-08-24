@@ -40,5 +40,7 @@ redis_data/
 # Scratch / dev-only test scripts
 backend/test_models_live.py
 
-# NOTE: backend/models/*.pth are intentionally committed (bundled in Docker image)
-# Do NOT add *.pth here — model files must be in git for Render Docker builds
+# PyTorch model weights — large binary files, NOT stored in git
+# They are downloaded at Docker build time from GitHub Releases (see Dockerfile)
+*.pth
+ALL MODELS/

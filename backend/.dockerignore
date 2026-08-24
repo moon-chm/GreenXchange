@@ -25,5 +25,6 @@ htmlcov/
 alembic/versions/
 ml_model/
 
-# NOTE: models/ directory (.pth files) is intentionally NOT excluded here.
-# Both ResNet18 model weights are bundled inside the Docker image for production.
+# Model weights are downloaded at build time from GitHub Releases (not stored in git)
+# The Dockerfile RUN commands handle the download — no local models/ needed in context
+models/
