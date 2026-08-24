@@ -88,16 +88,16 @@ export default function GrowthUpdatePage() {
       try {
         let res;
         try {
-          // 1. Primary route on latest backend
-          res = await api.post(`/plants/${id}/growth`, formData, {
+          // 1. Primary route matching currently live backend deployment
+          res = await api.post(`/growth/${id}/growth`, formData, {
             headers: { "Content-Type": undefined },
             timeout: 90000,
           });
         } catch (err1: any) {
           if (err1?.response?.status === 404) {
             try {
-              // 2. Fallback to /growth/{id}/growth for legacy active backend
-              res = await api.post(`/growth/${id}/growth`, formData, {
+              // 2. Fallback to /plants/{id}/growth
+              res = await api.post(`/plants/${id}/growth`, formData, {
                 headers: { "Content-Type": undefined },
                 timeout: 90000,
               });
