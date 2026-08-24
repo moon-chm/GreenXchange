@@ -45,6 +45,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Organization seeding warning (non-fatal): {e}")
 
+    # Pre-warm CV models on startup so first user upload is instantaneous
+    try:
+        from app.services.cv.models import get_cv_model
+        get_cv_model()
+        logger.info("✅ Pre-warmed PyTorch CV models on startup.")
+    except Exception as e:
+        logger.warning(f"⚠️ CV model pre-warm notice: {e}")
+
     yield
 
 async def _seed_default_species():

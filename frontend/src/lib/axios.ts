@@ -28,7 +28,7 @@ export const getBaseUrl = (): string => {
 
 const api = axios.create({
   baseURL: getBaseUrl(),
-  timeout: 30000,
+  timeout: 90000, // 90s for AI model inference and photo processing
   headers: {
     'Content-Type': 'application/json',
   },

@@ -165,6 +165,9 @@ class PyTorchCVModel(CVModel):
             return None
         try:
             img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            # Quick thumbnail pre-scale to avoid slow CPU resizing on 12MP+ phone photos
+            if img.width > 600 or img.height > 600:
+                img.thumbnail((600, 600))
             tensor = self.transform(img).unsqueeze(0).to(self.device)
             return tensor
         except Exception as e:
@@ -178,6 +181,8 @@ class PyTorchCVModel(CVModel):
         """
         try:
             original = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            if original.width > 600 or original.height > 600:
+                original.thumbnail((600, 600))
             
             buf = io.BytesIO()
             original.save(buf, format="JPEG", quality=quality)

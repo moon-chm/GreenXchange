@@ -88,6 +88,7 @@ export default function GrowthUpdatePage() {
       try {
         const res = await api.post(`/plants/${id}/growth`, formData, {
           headers: { "Content-Type": undefined },
+          timeout: 90000,
         });
 
         setSuccessResult({
