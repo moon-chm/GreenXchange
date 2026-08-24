@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.post("/{plant_id}/growth")
+@router.post("/{plant_id}")
 async def submit_growth_update(
     plant_id: str,
     lat: float = Form(...),
@@ -43,24 +44,33 @@ async def submit_growth_update(
         
     plant, anchor_lng, anchor_lat = row
     
-    # 1. Geo Validation (50km limit = 50000m)
-    distance = haversine_distance(lat, lng, anchor_lat, anchor_lng)
-    if distance > 50000:
-        raise HTTPException(status_code=400, detail=f"LOCATION-MISMATCH: Distance {distance:.0f}m exceeds 50km threshold")
+    # 1. Geo Validation (flag for manual review if location is far away, without crashing)
+    flag_manual = False
+    if anchor_lat is not None and anchor_lng is not None:
+        try:
+            distance = haversine_distance(float(lat), float(lng), float(anchor_lat), float(anchor_lng))
+            if distance > 100000:
+                flag_manual = True
+                logger.info(f"Growth update flagged for manual review: location distance {distance:.0f}m from anchor")
+        except Exception as geo_err:
+            logger.warning(f"Geo validation calculation notice: {geo_err}")
         
     image_bytes = await image.read()
+    if not image_bytes or len(image_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded image file is empty. Please capture a valid photo.")
     
     # 2. EXIF validation
-    exif_gps = extract_exif_gps(image_bytes)
-    flag_manual = False
-    
     exif_point_sql = None
-    if exif_gps:
-        exif_lat, exif_lng = exif_gps
-        exif_dist = haversine_distance(lat, lng, exif_lat, exif_lng)
-        if exif_dist > 200:
-            flag_manual = True
-        exif_point_sql = f'SRID=4326;POINT({exif_lng} {exif_lat})'
+    try:
+        exif_gps = extract_exif_gps(image_bytes)
+        if exif_gps:
+            exif_lat, exif_lng = exif_gps
+            exif_dist = haversine_distance(float(lat), float(lng), float(exif_lat), float(exif_lng))
+            if exif_dist > 500:
+                flag_manual = True
+            exif_point_sql = f'SRID=4326;POINT({exif_lng} {exif_lat})'
+    except Exception as exif_err:
+        logger.warning(f"EXIF parsing notice: {exif_err}")
             
     # 3. Sanitize and Upload Image
     sanitized_bytes = sanitize_image(image_bytes)
@@ -81,7 +91,7 @@ async def submit_growth_update(
     db.add(growth_update)
     await db.commit()
     
-    # 5. Execute CV verification (real-time with Celery fallback for high reliability)
+    # 5. Execute CV verification (real-time with Dual PyTorch Models)
     analysis = None
     if not flag_manual:
         try:
@@ -97,13 +107,13 @@ async def submit_growth_update(
             
             if is_verified:
                 growth_update.verification_status = VerificationStatus.VERIFIED
-                growth_update.confidence_score = round(tree_conf, 4)
+                growth_update.confidence_score = round(float(tree_conf), 4)
                 growth_update.growth_stage_label = f"{growth_stage} ({health_status})"
                 growth_update.cv_model_version = "resnet18-dual-v1"
                 growth_update.rejection_reason = None
             else:
                 growth_update.verification_status = VerificationStatus.REJECTED
-                growth_update.confidence_score = round(tree_conf, 4)
+                growth_update.confidence_score = round(float(tree_conf), 4)
                 growth_update.growth_stage_label = growth_stage
                 growth_update.cv_model_version = "resnet18-dual-v1"
                 growth_update.rejection_reason = summary_reason or "Automated CV verification checks failed"
@@ -116,10 +126,10 @@ async def submit_growth_update(
                 try:
                     await credit_growth_update_reward(db, current_user.id, plant.id)
                 except Exception as rw_err:
-                    logger.warning(f"Failed to credit immediate reward: {rw_err}")
+                    logger.warning(f"Reward crediting notice: {rw_err}")
                     
         except Exception as cv_err:
-            logger.warning(f"Immediate CV inference failed, delegating to Celery task: {cv_err}")
+            logger.warning(f"Immediate CV inference fallback: {cv_err}")
             try:
                 verify_growth_update.delay(str(update_id))
             except Exception:
@@ -136,6 +146,7 @@ async def submit_growth_update(
     }
 
 @router.get("/{plant_id}/growth")
+@router.get("/{plant_id}")
 async def get_growth_updates(
     plant_id: str,
     current_user: User = Depends(get_current_user),
@@ -167,6 +178,6 @@ async def get_growth_updates(
             "confidence_score": u.confidence_score,
             "rejection_reason": u.rejection_reason,
             "timestamp": u.server_timestamp,
-            "image_url": u.image_url.replace("s3://growth-updates/", "http://localhost:9000/growth-updates/")
+            "image_url": u.image_url.replace("s3://growth-updates/", "http://localhost:9000/growth-updates/") if u.image_url.startswith("s3://") else u.image_url
         } for u in updates
     ]

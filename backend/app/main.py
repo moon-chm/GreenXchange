@@ -238,6 +238,13 @@ app.add_middleware(
     max_age=600,
 )
 
+# Static uploads directory for media files
+import os
+from fastapi.staticfiles import StaticFiles
+uploads_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+os.makedirs(uploads_path, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_path), name="uploads")
+
 # Route definitions — each router mounted at /api/<prefix> and /<prefix>
 routers_list = [
     (health.router, "health"),
@@ -246,7 +253,8 @@ routers_list = [
     (environment.router, "environment"),
     (recommendations.router, "recommendations"),
     (plants.router, "plants"),
-    (growth.router, "growth"),       # Fixed: was colliding with plants on /plants
+    (growth.router, "growth"),
+    (growth.router, "plants"),       # Mounts /api/plants/{id}/growth and /plants/{id}/growth
     (rewards.router, "rewards"),
     (drives.router, "drives"),
     (news.router, "news"),

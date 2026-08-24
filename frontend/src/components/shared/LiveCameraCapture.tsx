@@ -32,6 +32,7 @@ export default function LiveCameraCapture({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Stop active video stream
   const stopStream = useCallback(() => {
@@ -210,6 +211,15 @@ export default function LiveCameraCapture({
           className="hidden"
         />
 
+        {/* Regular file picker fallback */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleNativeCameraFile}
+          className="hidden"
+        />
+
         {/* Flash Effect */}
         <AnimatePresence>
           {flash && (
@@ -348,18 +358,18 @@ export default function LiveCameraCapture({
                 <div className="flex flex-col sm:flex-row gap-2 mt-1 w-full max-w-xs">
                   <button
                     type="button"
-                    onClick={() => startCamera(facingMode)}
-                    className="flex-1 py-2 px-3 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex-1 py-2 px-3 bg-fern hover:bg-forest text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1 shadow-sm"
                   >
-                    Retry Live Stream
+                    <Camera className="w-3.5 h-3.5" />
+                    Take / Upload Photo
                   </button>
                   <button
                     type="button"
-                    onClick={() => nativeCameraInputRef.current?.click()}
-                    className="flex-1 py-2 px-3 bg-fern hover:bg-forest text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1"
+                    onClick={() => startCamera(facingMode)}
+                    className="py-2 px-3 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold transition-colors"
                   >
-                    <Camera className="w-3.5 h-3.5" />
-                    Open Camera App
+                    Retry Camera
                   </button>
                 </div>
               </div>

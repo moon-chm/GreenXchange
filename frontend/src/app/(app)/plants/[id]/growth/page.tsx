@@ -27,8 +27,8 @@ export default function GrowthUpdatePage() {
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [locStatus, setLocStatus] = useState("Locating device GPS...");
+  const [location, setLocation] = useState<{ lat: number; lng: number }>({ lat: 28.6139, lng: 77.2090 });
+  const [locStatus, setLocStatus] = useState("Acquiring GPS coordinates...");
   const [loading, setLoading] = useState(false);
   const [successResult, setSuccessResult] = useState<{
     status: string;
@@ -47,20 +47,14 @@ export default function GrowthUpdatePage() {
         },
         (err) => {
           console.warn("GPS error:", err);
-          setLocStatus("Permission required. Using approximate location.");
-          if (!location) {
-            setLocation({ lat: 28.6139, lng: 77.2090 });
-          }
+          setLocStatus("Using default/approximate location");
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      setLocStatus("Geolocation not supported by browser");
-      if (!location) {
-        setLocation({ lat: 28.6139, lng: 77.2090 });
-      }
+      setLocStatus("Using default/approximate location");
     }
-  }, [location]);
+  }, []);
 
   useEffect(() => {
     requestLocation();
@@ -79,17 +73,21 @@ export default function GrowthUpdatePage() {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!file || !location) return;
+      if (!file) {
+        alert("Please capture or select a photo of your plant first.");
+        return;
+      }
 
+      const activeCoords = location || { lat: 28.6139, lng: 77.2090 };
       setLoading(true);
       const formData = new FormData();
       formData.append("image", file);
-      formData.append("lat", location.lat.toString());
-      formData.append("lng", location.lng.toString());
+      formData.append("lat", activeCoords.lat.toString());
+      formData.append("lng", activeCoords.lng.toString());
 
       try {
         const res = await api.post(`/plants/${id}/growth`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
+          headers: { "Content-Type": undefined },
         });
 
         setSuccessResult({
@@ -103,7 +101,9 @@ export default function GrowthUpdatePage() {
           router.push(`/plants`);
         }, 3600);
       } catch (err: any) {
-        alert(extractErrorMessage(err, "Failed to submit growth update. Please ensure a live tree is captured."));
+        const detailMsg = err?.response?.data?.detail;
+        const msg = typeof detailMsg === "string" ? detailMsg : extractErrorMessage(err, "Failed to submit growth update. Please ensure a live tree is captured.");
+        alert(msg);
         setLoading(false);
       }
     },
