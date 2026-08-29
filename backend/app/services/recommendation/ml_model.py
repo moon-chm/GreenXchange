@@ -23,16 +23,21 @@ class PickleScoringModel(ScoringModel):
 
     def __init__(self, model_path: str):
         import joblib
+        import warnings
 
         self.model_path = model_path
-        self.model = joblib.load(model_path)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.model = joblib.load(model_path)
 
         # Load label encoder from sibling path (or LABEL_ENCODER_PATH env var)
         encoder_path = os.getenv(
             "LABEL_ENCODER_PATH",
             os.path.join(os.path.dirname(model_path), "label_encoder.pkl"),
         )
-        self.label_encoder = joblib.load(encoder_path)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.label_encoder = joblib.load(encoder_path)
 
         # Build lookup: class_name (lowercase) -> index in decision_function output
         self.class_index: Dict[str, int] = {

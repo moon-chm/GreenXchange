@@ -313,7 +313,7 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
                   <div>
                     <h4 className="font-display font-semibold text-canopy text-sm">Unique Plant Passport</h4>
                     <p className="text-xs text-canopy/60 leading-normal mt-0.5">
-                      This unique QR code points to your plant's public verification passport. Anyone who scans it can view the planting location, owner ledger, and growth timeline.
+                      This unique QR code points to your plant&apos;s public verification passport. Anyone who scans it can view the planting location, owner ledger, and growth timeline.
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -366,12 +366,12 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
                   <Camera size={24} className="text-canopy/30" />
                   <p className="font-display font-semibold text-canopy/60 text-sm">No updates submitted yet</p>
                   <p className="text-xs text-canopy/50 max-w-xs mt-0.5 leading-normal">
-                    Submit growth photos to verify your plant's progress and earn additional GXC token rewards on the ledger!
+                    Submit growth photos to verify your plant&apos;s progress and earn additional GXC token rewards on the ledger!
                   </p>
                 </div>
               ) : (
                 <div className="relative pl-6 border-l border-sage/40 space-y-6 flex-1 py-1">
-                  {growthUpdates.map((update, idx) => {
+                  {growthUpdates.map((update) => {
                     const isVerified = update.status === "verified";
                     return (
                       <div key={update.id} className="relative">

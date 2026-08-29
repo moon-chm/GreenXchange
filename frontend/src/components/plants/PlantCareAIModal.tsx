@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Sparkles, Droplets, Sun, Sparkle, Scissors, ShieldAlert, HeartHandshake, Check, ChevronRight, ArrowLeft } from "lucide-react";
+import { 
+  X, Check, AlertCircle, RefreshCw, 
+  Droplets, Sun, Bug, Wind, ChevronRight,
+  BookOpen
+} from "lucide-react";
 import api from "@/lib/axios";
 
 interface PlantOption {
@@ -390,7 +394,7 @@ export default function PlantCareAIModal({
                 <div>
                   <h3 className="font-display text-lg font-bold text-canopy">{result.plant_name} Nursery Care Guide</h3>
                   <p className="text-xs sm:text-sm text-canopy/80 italic font-sans mt-1 leading-relaxed">
-                    "{result.caretaker_greeting}"
+                    &ldquo;{result.caretaker_greeting}&rdquo;
                   </p>
                   <div className="flex gap-2 mt-2">
                     <span className="text-[10px] font-bold bg-white/80 border border-sage/30 px-2 py-0.5 rounded-full text-canopy/70">

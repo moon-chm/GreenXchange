@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Fraunces, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
@@ -21,6 +21,10 @@ const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains",
   display: "swap",
 });
+
+export const viewport: Viewport = {
+  themeColor: "#2D4A30",
+};
 
 export const metadata: Metadata = {
   title: {
@@ -74,7 +78,6 @@ export const metadata: Metadata = {
     apple: "/logo.jpg",
     shortcut: "/logo.jpg",
   },
-  themeColor: "#2D4A30",
   manifest: undefined,
 };
 
