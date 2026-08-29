@@ -262,7 +262,6 @@ routers_list = [
     (recommendations.router, "recommendations"),
     (plants.router, "plants"),
     (growth.router, "growth"),
-    (growth.router, "plants"),       # Mounts /api/plants/{id}/growth and /plants/{id}/growth
     (rewards.router, "rewards"),
     (drives.router, "drives"),
     (news.router, "news"),

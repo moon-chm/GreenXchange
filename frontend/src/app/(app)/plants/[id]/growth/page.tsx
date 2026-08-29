@@ -86,36 +86,11 @@ export default function GrowthUpdatePage() {
       formData.append("lng", activeCoords.lng.toString());
 
       try {
-        let res;
-        try {
-          // 1. Primary route matching currently live backend deployment
-          res = await api.post(`/growth/${id}/growth`, formData, {
-            headers: { "Content-Type": undefined },
-            timeout: 90000,
-          });
-        } catch (err1: any) {
-          if (err1?.response?.status === 404) {
-            try {
-              // 2. Fallback to /plants/{id}/growth
-              res = await api.post(`/plants/${id}/growth`, formData, {
-                headers: { "Content-Type": undefined },
-                timeout: 90000,
-              });
-            } catch (err2: any) {
-              if (err2?.response?.status === 404) {
-                // 3. Fallback to /growth/{id}
-                res = await api.post(`/growth/${id}`, formData, {
-                  headers: { "Content-Type": undefined },
-                  timeout: 90000,
-                });
-              } else {
-                throw err2;
-              }
-            }
-          } else {
-            throw err1;
-          }
-        }
+        // POST to /api/growth/{id}/growth — unambiguous, always registered
+        const res = await api.post(`/growth/${id}/growth`, formData, {
+          headers: { "Content-Type": undefined },
+          timeout: 90000,
+        });
 
         setSuccessResult({
           status: res?.data?.verification_status || "VERIFIED",
@@ -129,7 +104,10 @@ export default function GrowthUpdatePage() {
         }, 3600);
       } catch (err: any) {
         const detailMsg = err?.response?.data?.detail;
-        const msg = typeof detailMsg === "string" ? detailMsg : extractErrorMessage(err, "Failed to submit growth update. Please ensure a live tree is captured.");
+        const msg =
+          typeof detailMsg === "string"
+            ? detailMsg
+            : extractErrorMessage(err, "Failed to submit growth update. Please ensure a live tree is captured.");
         alert(msg);
         setLoading(false);
       }

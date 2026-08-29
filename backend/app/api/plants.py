@@ -1,6 +1,6 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -472,3 +472,29 @@ async def ai_verify_image(
     except Exception as e:
         logger.error(f"AI verify endpoint error: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=f"Image verification failed: {str(e)}")
+
+
+@router.post("/{plant_id}/growth")
+async def submit_growth_update_via_plants(
+    plant_id: str,
+    lat: float = Form(...),
+    lng: float = Form(...),
+    image: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delegate: POST /api/plants/{plant_id}/growth -> growth submission handler.
+    Explicitly registered in plants router to avoid mounting-order conflicts
+    with the growth router in main.py.
+    """
+    from app.api.growth import submit_growth_update
+    # Re-read the image file since UploadFile is a stream
+    return await submit_growth_update(
+        plant_id=plant_id,
+        lat=lat,
+        lng=lng,
+        image=image,
+        current_user=current_user,
+        db=db
+    )
