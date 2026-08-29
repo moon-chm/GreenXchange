@@ -125,12 +125,6 @@ export default function PlantRegistrationModal({
         const res = await api.get("/plants/species");
         const data = res.data ?? [];
         setSpeciesList(data);
-        if (data.length > 0) {
-          setFormData((prev) => ({
-            ...prev,
-            species_id: data[0].id,
-          }));
-        }
       } catch (err) {
         console.error("Failed to load species:", err);
       } finally {
@@ -228,11 +222,29 @@ export default function PlantRegistrationModal({
     setIsSubmitting(true);
     setError(null);
     try {
-      const speciesId = formData.species_id || speciesList[0]?.id;
+      const plantName = customSpeciesName.trim() || formData.common_name.trim();
+      const nickname = formData.common_name.trim();
+
+      // Find matching species in the predefined library (e.g. "Ashok" -> "Ashoka Tree", "Tulsi" -> "Tulsi (Holy Basil)")
+      let resolvedSpeciesId: string | undefined;
+      if (plantName && speciesList.length > 0) {
+        const pLower = plantName.toLowerCase();
+        const matched = speciesList.find((s: any) => {
+          const sName = (s.common_name || "").toLowerCase();
+          return (
+            sName === pLower ||
+            sName.includes(pLower) ||
+            pLower.includes(sName.replace(" tree", "").replace(" plant", "").trim())
+          );
+        });
+        if (matched) {
+          resolvedSpeciesId = matched.id;
+        }
+      }
 
       await api.post("/plants/register", {
-        species_id: speciesId || undefined,
-        common_name: customSpeciesName.trim() || formData.common_name.trim() || undefined,
+        species_id: resolvedSpeciesId,
+        common_name: nickname && nickname.toLowerCase() !== plantName.toLowerCase() ? nickname : plantName,
         lat: parseFloat(formData.latitude),
         lng: parseFloat(formData.longitude),
         planting_date: new Date(formData.planting_date).toISOString(),

@@ -116,9 +116,13 @@ export default function PlantCard({ plant, onClick }: PlantCardProps) {
         <h3 className="font-display text-lg font-semibold text-canopy leading-tight">
           {plant.common_name || plant.species_name}
         </h3>
-        {plant.species_name && plant.common_name && plant.species_name.toLowerCase() !== plant.common_name.toLowerCase() && (
-          <p className="text-xs text-canopy/60">{plant.species_name}</p>
-        )}
+        {plant.species_name &&
+          plant.common_name &&
+          plant.species_name.trim().toLowerCase() !== plant.common_name.trim().toLowerCase() &&
+          plant.species_name !== "Unknown" &&
+          plant.species_name !== "Urban Plant" && (
+            <p className="text-xs text-canopy/60">Species: {plant.species_name}</p>
+          )}
         {plant.scientific_name && (
           <p className="italic text-xs text-canopy/50">{plant.scientific_name}</p>
         )}

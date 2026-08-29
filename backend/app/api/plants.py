@@ -54,21 +54,33 @@ async def register_plant(
         logger.warning(f"Rate limiter warning on plant register: {e}")
 
     plant_name = (req.common_name or "").strip()
-    species = None  # initialize before conditional lookup
+    species = None
 
-    # 1. If species_id provided, check if it matches
+    # 1. If species_id provided, verify it exists and is compatible
     if req.species_id and str(req.species_id).strip():
         try:
             species_uuid = uuid.UUID(str(req.species_id).strip())
             result = await db.execute(select(PlantSpecies).filter(PlantSpecies.id == species_uuid))
-            species = result.scalars().first()
+            candidate_species = result.scalars().first()
+            if candidate_species:
+                if plant_name:
+                    p_low = plant_name.lower()
+                    c_low = candidate_species.common_name.lower()
+                    if p_low in c_low or c_low in p_low:
+                        species = candidate_species
+                else:
+                    species = candidate_species
         except (ValueError, TypeError):
             pass
 
-    # 2. If no species found yet, try matching by common name (case-insensitive)
+    # 2. Try matching by common name (case-insensitive and prefix/fuzzy search)
     if not species and plant_name:
         result = await db.execute(
-            select(PlantSpecies).filter(PlantSpecies.common_name.ilike(plant_name))
+            select(PlantSpecies).filter(
+                (PlantSpecies.common_name.ilike(plant_name)) |
+                (PlantSpecies.common_name.ilike(f"{plant_name}%")) |
+                (PlantSpecies.common_name.ilike(f"%{plant_name}%"))
+            ).limit(1)
         )
         species = result.scalars().first()
 

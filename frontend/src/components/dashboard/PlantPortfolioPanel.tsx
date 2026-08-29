@@ -158,11 +158,15 @@ export default function PlantPortfolioPanel({
                   <p className="font-display text-base font-semibold text-canopy leading-tight line-clamp-1 group-hover:text-fern transition-colors">
                     {plant.common_name || plant.species_name}
                   </p>
-                  {plant.common_name && (
-                    <p className="text-xs text-canopy/50 italic mt-0.5 line-clamp-1">
-                      {plant.species_name}
-                    </p>
-                  )}
+                  {plant.species_name &&
+                    plant.common_name &&
+                    plant.species_name.trim().toLowerCase() !== plant.common_name.trim().toLowerCase() &&
+                    plant.species_name !== "Unknown" &&
+                    plant.species_name !== "Urban Plant" && (
+                      <p className="text-xs text-canopy/50 italic mt-0.5 line-clamp-1">
+                        Species: {plant.species_name}
+                      </p>
+                    )}
                 </div>
 
                 {/* Status & Passport quick link */}
