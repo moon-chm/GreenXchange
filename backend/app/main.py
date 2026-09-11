@@ -139,18 +139,27 @@ async def _seed_default_species():
 
 async def _repair_mislabeled_plants():
     """
-    Repairs legacy plants registered when the frontend defaulted species_id to Neem Tree.
-    Re-associates plants with their actual species matching their common_name.
+    Repairs legacy plants that got bound to "Neem Tree" by an earlier loose
+    substring-matching bug during registration (an unrelated/empty name could
+    match arbitrarily with no ORDER BY, and Neem — the first seeded species —
+    was consistently what came back).
+
+    Scoped deliberately to plants currently linked to Neem: common_name is a
+    free-form nickname (e.g. "Office Mango") and is NOT expected to match the
+    species name in general, so this check can only be trusted for the one
+    species we know was being assigned incorrectly — applying it to every
+    plant would misfire on legitimately-linked plants with unrelated nicknames.
     """
     import uuid as _uuid
     from app.db.session import AsyncSessionLocal
     from app.models.plants import Plant, PlantSpecies
     from app.models.enums import ToxicityLevel, AllergenRisk, MaintenanceLevel, GrowthRate, SpaceType
+    from app.services.plant_species import clean_species_name
     from sqlalchemy import select as _select
 
     async with AsyncSessionLocal() as session:
         sp_res = await session.execute(_select(PlantSpecies))
-        all_species = sp_res.scalars().all()
+        all_species = list(sp_res.scalars().all())
         if not all_species:
             return
 
@@ -158,25 +167,23 @@ async def _repair_mislabeled_plants():
         if not neem_species:
             return
 
-        # Find plants associated with Neem Tree whose common_name does NOT contain 'neem'
+        # Only plants currently linked to Neem whose common_name doesn't mention
+        # Neem are suspect — those genuinely named "Neem ..." are left untouched.
         pl_res = await session.execute(_select(Plant).filter(Plant.species_id == neem_species.id))
         plants_to_check = pl_res.scalars().all()
 
         modified_count = 0
+
         for plant in plants_to_check:
             c_name = (plant.common_name or "").strip()
-            c_low = c_name.lower()
-            if not c_low or "neem" in c_low:
+            c_root = clean_species_name(c_name)
+            if not c_root or "neem" in c_root:
                 continue
 
-            target_species = None
-            clean_c = c_low.replace(" tree", "").replace(" plant", "").strip()
-            for s in all_species:
-                s_low = s.common_name.lower()
-                clean_s = s_low.replace(" tree", "").replace(" plant", "").strip()
-                if clean_c in clean_s or clean_s in clean_c or c_low in s_low or s_low in c_low:
-                    target_species = s
-                    break
+            target_species = next(
+                (s for s in all_species if clean_species_name(s.common_name) == c_root),
+                None,
+            )
 
             if not target_species:
                 target_species = PlantSpecies(

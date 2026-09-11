@@ -76,6 +76,7 @@ export default function SpeciesCard({ species }: SpeciesCardProps) {
       const coords = await getCoordinates();
       await api.post("/plants/register", {
         species_id: species.species_id,
+        species_name: species.common_name,
         lat: coords.lat,
         lng: coords.lng,
         planting_date: new Date().toISOString(),

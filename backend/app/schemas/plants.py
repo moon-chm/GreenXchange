@@ -5,6 +5,10 @@ from app.models.enums import SpaceType
 
 class PlantRegistrationRequest(BaseModel):
     species_id: Optional[str] = None
+    # The actual species being registered (e.g. "Mango Tree") — used to resolve
+    # or create the PlantSpecies record. Kept separate from common_name so a
+    # personal nickname (e.g. "Office Mango") never gets mistaken for the species.
+    species_name: Optional[str] = None
     common_name: Optional[str] = None
     lat: float
     lng: float

@@ -72,7 +72,6 @@ function XIcon({ size = 20 }: { size?: number }) {
 }
 
 interface FormData {
-  species_id: string;
   common_name: string;
   space_type: string;
   planting_date: string;
@@ -107,7 +106,6 @@ export default function PlantRegistrationModal({
   const [customSpeciesName, setCustomSpeciesName] = useState("");
 
   const [formData, setFormData] = useState<FormData>({
-    species_id: "",
     common_name: "",
     space_type: "indoor",
     planting_date: new Date().toISOString().split("T")[0],
@@ -225,22 +223,26 @@ export default function PlantRegistrationModal({
       const plantName = customSpeciesName.trim() || formData.common_name.trim();
       const nickname = formData.common_name.trim();
 
-      // Find matching species in the predefined library (e.g. "Ashok" -> "Ashoka Tree", "Tulsi" -> "Tulsi (Holy Basil)")
+      // Find matching species in the predefined library (e.g. "Tulsi" -> "Tulsi (Holy Basil)").
+      // Exact match only, on the normalized name — a loose substring match here
+      // previously let unrelated species (or short/empty inputs) match arbitrarily,
+      // which is how plants ended up mislabeled with the wrong species.
+      const cleanName = (raw: string) =>
+        raw
+          .toLowerCase()
+          .replace(/\(.*?\)/g, "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .replace(/ tree$/, "")
+          .replace(/ plant$/, "")
+          .trim();
+
       let resolvedSpeciesId: string | undefined;
       if (plantName && speciesList.length > 0) {
-        const pLower = plantName.toLowerCase();
-        const pClean = pLower.replace(" tree", "").replace(" plant", "").trim();
-        const matched = speciesList.find((s: any) => {
-          const sName = (s.common_name || "").toLowerCase();
-          const sClean = sName.replace(" tree", "").replace(" plant", "").trim();
-          return (
-            sName === pLower ||
-            sClean === pClean ||
-            sClean.includes(pClean) ||
-            pClean.includes(sClean) ||
-            sName.includes(pClean)
-          );
-        });
+        const pClean = cleanName(plantName);
+        const matched = pClean
+          ? speciesList.find((s: any) => cleanName(s.common_name || "") === pClean)
+          : undefined;
         if (matched) {
           resolvedSpeciesId = matched.id;
         }
@@ -248,6 +250,7 @@ export default function PlantRegistrationModal({
 
       await api.post("/plants/register", {
         species_id: resolvedSpeciesId,
+        species_name: plantName,
         common_name: nickname && nickname.toLowerCase() !== plantName.toLowerCase() ? nickname : plantName,
         lat: parseFloat(formData.latitude),
         lng: parseFloat(formData.longitude),
@@ -271,7 +274,6 @@ export default function PlantRegistrationModal({
     setError(null);
     setCustomSpeciesName("");
     setFormData({
-      species_id: "",
       common_name: "",
       space_type: "indoor",
       planting_date: new Date().toISOString().split("T")[0],
@@ -281,7 +283,7 @@ export default function PlantRegistrationModal({
       is_public_on_map: true,
     });
     onClose();
-  }, [onClose, speciesList]);
+  }, [onClose]);
 
 
   const overlayAnim = shouldReduceMotion
@@ -594,7 +596,7 @@ export default function PlantRegistrationModal({
                     </h3>
                     <p className="text-sm text-canopy/60 max-w-xs">
                       <span className="font-medium text-canopy">
-                        {formData.common_name || speciesList.find((s) => s.id === formData.species_id)?.common_name || "Plant"}
+                        {formData.common_name || customSpeciesName || "Plant"}
                       </span> has been submitted for verification. Your plant photo & passport are live.
                     </p>
                   </div>

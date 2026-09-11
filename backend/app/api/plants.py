@@ -15,6 +15,7 @@ from app.schemas.plants import (
 )
 from app.utils.identity import generate_scan_id, generate_qr_code
 from app.core.rate_limiter import check_endpoint_rate_limit
+from app.services.plant_species import clean_species_name
 from datetime import datetime, timezone
 
 router = APIRouter()
@@ -53,10 +54,15 @@ async def register_plant(
     # that exception must propagate here, not be caught, or the limit never fires.
     await check_endpoint_rate_limit(request, "plant_register", max_requests=100, window_seconds=3600)
 
-    plant_name = (req.common_name or "").strip()
+    # The species name drives species resolution; common_name is a personal
+    # nickname (e.g. "Office Mango") and must never be used to match/create a
+    # species — otherwise the nickname itself gets mistaken for the species.
+    plant_name = (req.species_name or req.common_name or "").strip()
     species = None
 
-    # 1. If species_id provided, verify it exists and is compatible
+    # 1. If species_id provided, verify it exists and (when a name was also given)
+    #    that the name actually matches it — an exact match on the normalized
+    #    name only, never a loose substring, to avoid binding to the wrong species.
     if req.species_id and str(req.species_id).strip():
         try:
             species_uuid = uuid.UUID(str(req.species_id).strip())
@@ -64,27 +70,25 @@ async def register_plant(
             candidate_species = result.scalars().first()
             if candidate_species:
                 if plant_name:
-                    p_clean = plant_name.lower().replace(" tree", "").replace(" plant", "").strip()
-                    c_clean = candidate_species.common_name.lower().replace(" tree", "").replace(" plant", "").strip()
-                    if p_clean in c_clean or c_clean in p_clean:
+                    if clean_species_name(plant_name) == clean_species_name(candidate_species.common_name):
                         species = candidate_species
                 else:
                     species = candidate_species
         except (ValueError, TypeError):
             pass
 
-    # 2. Try matching by common name (case-insensitive and prefix/fuzzy search)
+    # 2. Try matching by common name — exact match on the normalized name only.
+    #    (A prior loose "%contains%" search could match an unrelated species —
+    #    or, if the name normalized to an empty/short string, match arbitrarily
+    #    with no ORDER BY — which is how plants ended up mislabeled as "Neem Tree".)
     if not species and plant_name:
-        p_clean = plant_name.strip()
-        p_root = p_clean.lower().replace(" tree", "").replace(" plant", "").strip()
-        result = await db.execute(
-            select(PlantSpecies).filter(
-                (PlantSpecies.common_name.ilike(p_clean)) |
-                (PlantSpecies.common_name.ilike(f"{p_root}%")) |
-                (PlantSpecies.common_name.ilike(f"%{p_root}%"))
-            ).limit(1)
-        )
-        species = result.scalars().first()
+        p_root = clean_species_name(plant_name)
+        if p_root:
+            result = await db.execute(select(PlantSpecies))
+            species = next(
+                (s for s in result.scalars().all() if clean_species_name(s.common_name) == p_root),
+                None,
+            )
 
     # 3. If it's a new or custom plant, create a dedicated species record for it
     if not species:
