@@ -42,3 +42,6 @@ backend/test_models_live.py
 
 # NOTE: backend/models/*.pth are intentionally committed (bundled in Docker image)
 # Do NOT add *.pth here — model files must be in git for Render Docker builds
+
+credentials.json
+get_gmail_token.py
