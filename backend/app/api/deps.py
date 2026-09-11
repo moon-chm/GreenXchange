@@ -3,9 +3,9 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt, JWTError
+from jose import JWTError
 from app.db.session import AsyncSessionLocal
-from app.core.config import settings
+from app.core.security import decode_token
 from app.models.users import User
 from app.schemas.auth import TokenPayload
 from sqlalchemy import select
@@ -16,14 +16,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
 
-def _decode_jwt(token: str) -> dict:
-    public_key = settings.jwt_public_key
-    if public_key and public_key.strip():
-        # RSA keypair configured — use RS256
-        return jwt.decode(token, public_key, algorithms=["RS256"])
-    # No RSA keys — fall back to HS256 symmetric
-    return jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-
 async def get_current_user(
     db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)
 ) -> User:
@@ -33,17 +25,19 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = _decode_jwt(token)
+        payload = decode_token(token)
         token_type: str = payload.get("type")
         if token_type != "access":
             raise credentials_exception
-            
+
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
         admin_claim: bool = payload.get("admin", False)
         token_data = TokenPayload(sub=user_id, admin=admin_claim)
-    except JWTError:
+    except (JWTError, RuntimeError):
+        # RuntimeError = auth is misconfigured server-side (should be caught at startup
+        # by Settings' validator already); still fail closed here rather than leak details.
         raise credentials_exception
         
     try:

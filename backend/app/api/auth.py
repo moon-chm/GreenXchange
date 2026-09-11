@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.api.deps import get_db
-from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token
+from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token, decode_token
 from app.core.rate_limiter import check_rate_limit, record_failed_attempt, clear_failed_attempts
 from app.models.users import User
 from app.schemas.auth import (
@@ -15,7 +15,6 @@ from app.schemas.auth import (
 )
 from app.core.config import settings
 from app.services.email import send_verification_email, send_password_reset_email
-from jose import jwt, JWTError
 
 logger = logging.getLogger("auth")
 router = APIRouter()
@@ -253,11 +252,7 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
         raise HTTPException(status_code=401, detail="Refresh token missing")
         
     try:
-        public_key = settings.jwt_public_key
-        if public_key and public_key.strip():
-            payload = jwt.decode(refresh_token, public_key, algorithms=["RS256"])
-        else:
-            payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=["HS256"])
+        payload = decode_token(refresh_token)
         token_type = payload.get("type")
         if token_type != "refresh":
             raise HTTPException(status_code=401, detail="Invalid token type")

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X, Calendar, MapPin, Coins, ExternalLink, Copy, Check, Leaf, Clock, Camera, Trash2, AlertTriangle } from "lucide-react";
-import api from "@/lib/axios";
+import api, { getBaseUrl } from "@/lib/axios";
 import StatusBadge from "@/components/shared/StatusBadge";
 
 interface Plant {
@@ -106,15 +106,20 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
   const getPublicUrl = useCallback(() => {
     if (!plant) return "";
     if (typeof window !== "undefined") {
-      let host = window.location.host;
-      if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-        const port = window.location.port ? `:${window.location.port}` : "";
-        host = `10.132.167.93${port}`;
-      }
-      return `${window.location.protocol}//${host}/plants/public/${plant.scan_id}`;
+      // Always the app's own current origin — correct in local dev, docker-compose (behind
+      // nginx), and the deployed Render frontend domain alike. Never hardcode a specific host.
+      return `${window.location.origin}/plants/public/${plant.scan_id}`;
     }
     return `/plants/public/${plant.scan_id}`;
   }, [plant]);
+
+  // Growth-update photos are stored relative to the backend (e.g. "/uploads/growth/x.jpg")
+  // or as an already-absolute MinIO/S3 URL. Resolve relative paths against the same
+  // backend base URL used for all API calls — never a hardcoded host.
+  const resolveGrowthImageUrl = useCallback((url: string) => {
+    if (!url) return url;
+    return url.startsWith("http") ? url : `${getBaseUrl()}${url}`;
+  }, []);
 
 
   const handleCopyLink = () => {
@@ -384,7 +389,7 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
                           {/* Update thumbnail image */}
                           <div className="w-16 h-16 rounded-xl overflow-hidden bg-sage/10 border border-sage/20 shrink-0 shadow-inner">
                             <img
-                              src={update.image_url.startsWith("http") ? update.image_url : `http://localhost/api${update.image_url}`}
+                              src={resolveGrowthImageUrl(update.image_url)}
                               alt={update.stage || "Growth Update"}
                               className="w-full h-full object-cover"
                               onError={(e) => {
