@@ -13,7 +13,7 @@ class User(Base):
     location_lat = Column(Float, nullable=True)
     location_lng = Column(Float, nullable=True)
     device_fingerprint = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=False)
     role = Column(String(50), default="USER", nullable=False)
     is_org = Column(Boolean, default=False, nullable=False)
 
