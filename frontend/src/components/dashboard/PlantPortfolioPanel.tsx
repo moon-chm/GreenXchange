@@ -162,7 +162,8 @@ export default function PlantPortfolioPanel({
                     plant.common_name &&
                     plant.species_name.trim().toLowerCase() !== plant.common_name.trim().toLowerCase() &&
                     plant.species_name !== "Unknown" &&
-                    plant.species_name !== "Urban Plant" && (
+                    plant.species_name !== "Urban Plant" &&
+                    !(plant.species_name.toLowerCase().includes("neem") && !plant.common_name.toLowerCase().includes("neem")) && (
                       <p className="text-xs text-canopy/50 italic mt-0.5 line-clamp-1">
                         Species: {plant.species_name}
                       </p>

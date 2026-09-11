@@ -120,7 +120,8 @@ export default function PlantCard({ plant, onClick }: PlantCardProps) {
           plant.common_name &&
           plant.species_name.trim().toLowerCase() !== plant.common_name.trim().toLowerCase() &&
           plant.species_name !== "Unknown" &&
-          plant.species_name !== "Urban Plant" && (
+          plant.species_name !== "Urban Plant" &&
+          !(plant.species_name.toLowerCase().includes("neem") && !plant.common_name.toLowerCase().includes("neem")) && (
             <p className="text-xs text-canopy/60">Species: {plant.species_name}</p>
           )}
         {plant.scientific_name && (

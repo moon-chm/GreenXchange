@@ -186,12 +186,19 @@ async def get_my_plants(
         latest_gu = plant.growth_updates[0] if (hasattr(plant, "growth_updates") and plant.growth_updates) else None
         status_str = latest_gu.verification_status.value.lower() if latest_gu else "verified"
 
+        species_display = plant.species.common_name if plant.species else "Urban Plant"
+        common_display = plant.common_name or species_display
+
+        # Protect against legacy plants erroneously associated with Neem Tree
+        if "neem" in species_display.lower() and "neem" not in common_display.lower():
+            species_display = common_display
+
         portfolio.append(
             PlantPortfolioResponse(
                 id=str(plant.id),
                 scan_id=plant.scan_id,
-                species_name=plant.species.common_name if plant.species else "Urban Plant",
-                common_name=plant.common_name or (plant.species.common_name if plant.species else "Urban Plant"),
+                species_name=species_display,
+                common_name=common_display,
                 planting_date=plant.planting_date,
                 space_type=plant.space_type,
                 lat=row.lat,
@@ -243,12 +250,17 @@ async def get_community_map_trees(
         if current_user and current_user.id == plant.owner_id:
             is_owner = True
 
+        species_display = plant.species.common_name if plant.species else "Urban Species"
+        common_display = plant.common_name or (plant.species.common_name if plant.species else "Urban Tree")
+        if "neem" in species_display.lower() and "neem" not in common_display.lower():
+            species_display = common_display
+
         community_trees.append(
             CommunityMapPlantResponse(
                 id=str(plant.id),
                 scan_id=plant.scan_id,
-                common_name=plant.common_name or (plant.species.common_name if plant.species else "Urban Tree"),
-                species_name=plant.species.common_name if plant.species else "Urban Species",
+                common_name=common_display,
+                species_name=species_display,
                 owner_first_name=owner_first_name,
                 owner_id=str(plant.owner_id),
                 is_owner=is_owner,

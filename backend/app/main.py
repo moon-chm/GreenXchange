@@ -38,6 +38,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Plant species seeding warning (non-fatal): {e}")
 
+    # Auto-repair legacy plants that were misassigned to Neem Tree
+    try:
+        await _repair_mislabeled_plants()
+        logger.info("✅ Legacy plant species check complete.")
+    except Exception as e:
+        logger.warning(f"⚠️ Plant species repair warning (non-fatal): {e}")
+
     # Seed default government-allocated organization accounts
     try:
         await _seed_default_orgs()
@@ -125,6 +132,79 @@ async def _seed_default_species():
             session.add(sp)
         await session.commit()
         logger.info(f"✅ Seeded {len(DEFAULT_SPECIES)} default plant species.")
+
+async def _repair_mislabeled_plants():
+    """
+    Repairs legacy plants registered when the frontend defaulted species_id to Neem Tree.
+    Re-associates plants with their actual species matching their common_name.
+    """
+    import uuid as _uuid
+    from app.db.session import AsyncSessionLocal
+    from app.models.plants import Plant, PlantSpecies
+    from app.models.enums import ToxicityLevel, AllergenRisk, MaintenanceLevel, GrowthRate, SpaceType
+    from sqlalchemy import select as _select
+
+    async with AsyncSessionLocal() as session:
+        sp_res = await session.execute(_select(PlantSpecies))
+        all_species = sp_res.scalars().all()
+        if not all_species:
+            return
+
+        neem_species = next((s for s in all_species if "neem" in s.common_name.lower()), None)
+        if not neem_species:
+            return
+
+        # Find plants associated with Neem Tree whose common_name does NOT contain 'neem'
+        pl_res = await session.execute(_select(Plant).filter(Plant.species_id == neem_species.id))
+        plants_to_check = pl_res.scalars().all()
+
+        modified_count = 0
+        for plant in plants_to_check:
+            c_name = (plant.common_name or "").strip()
+            c_low = c_name.lower()
+            if not c_low or "neem" in c_low:
+                continue
+
+            target_species = None
+            clean_c = c_low.replace(" tree", "").replace(" plant", "").strip()
+            for s in all_species:
+                s_low = s.common_name.lower()
+                clean_s = s_low.replace(" tree", "").replace(" plant", "").strip()
+                if clean_c in clean_s or clean_s in clean_c or c_low in s_low or s_low in c_low:
+                    target_species = s
+                    break
+
+            if not target_species:
+                target_species = PlantSpecies(
+                    id=_uuid.uuid4(),
+                    common_name=c_name,
+                    scientific_name=f"{c_name} ({_uuid.uuid4().hex[:6]})",
+                    genus="Plantae",
+                    family="Flora",
+                    co2_absorption_rate=12.5,
+                    pm25_absorption_rate=0.5,
+                    voc_absorption_rate=0.4,
+                    toxicity_level=ToxicityLevel.NONE,
+                    allergen_risk=AllergenRisk.NONE,
+                    maintenance_level=MaintenanceLevel.LOW,
+                    growth_rate=GrowthRate.MODERATE,
+                    space_type_compatibility=[
+                        SpaceType.INDOOR,
+                        SpaceType.OUTDOOR_BALCONY,
+                        SpaceType.OUTDOOR_GARDEN,
+                        SpaceType.PUBLIC_PARK,
+                    ],
+                    data_source="Auto-repaired Species",
+                )
+                session.add(target_species)
+                all_species.append(target_species)
+
+            plant.species_id = target_species.id
+            modified_count += 1
+
+        if modified_count > 0:
+            await session.commit()
+            logger.info(f"✅ Auto-repaired {modified_count} legacy plant(s) mislabeled as Neem Tree.")
 
 async def _seed_default_orgs():
     """
