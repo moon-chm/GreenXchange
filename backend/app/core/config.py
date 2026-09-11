@@ -31,16 +31,23 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_CARE_API_KEY: str = ""
 
-    # Email — official production configuration with fallback
-    EMAIL_PROVIDER: str = "smtp"
+    # Email — Gmail API OAuth2 (primary, works on Render free tier via HTTPS/443)
+    EMAIL_PROVIDER: str = "gmail_api"
+    GMAIL_CLIENT_ID: str = ""
+    GMAIL_CLIENT_SECRET: str = ""
+    GMAIL_REFRESH_TOKEN: str = ""
+    GMAIL_SENDER: str = "gogreenxchange.official@gmail.com"
+    EMAIL_FROM: str = "GreenXchange <gogreenxchange.official@gmail.com>"
+
+    # Legacy SMTP fallback (kept for local dev / non-Render environments)
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = "gogreenxchange.official@gmail.com"
-    # No hardcoded default: set in .env. Email sending degrades gracefully
-    # (falls back to Resend, then to a logged failure) if left unset.
     SMTP_PASSWORD: str = ""
+
+    # Resend API fallback
     RESEND_API_KEY: str = ""
-    EMAIL_FROM: str = "GreenXchange <gogreenxchange.official@gmail.com>"
+
     FRONTEND_URL: str = "https://greenxchange-frontend.onrender.com"
 
     # Computer Vision AI Models

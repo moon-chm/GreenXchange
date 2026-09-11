@@ -1,8 +1,6 @@
 import logging
-import uuid
-import smtplib
-import socket
 import asyncio
+import base64
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate, make_msgid
@@ -229,61 +227,85 @@ def _get_base_template(content_html: str, preview_text: str = "", icon: str = "�
 </body>
 </html>"""
 
+def _build_mime_message(to_email: str, subject: str, html_content: str, text_content: str = "") -> MIMEMultipart:
+    """Builds a RFC-compliant multipart MIME message."""
+    import re
+    domain = settings.GMAIL_SENDER.split("@")[-1] if "@" in settings.GMAIL_SENDER else "greenxchange.org"
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = settings.EMAIL_FROM
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=domain)
+    msg["Reply-To"] = settings.GMAIL_SENDER
+    msg["X-Mailer"] = "GreenXchange-Mailer/2.0"
+
+    if not text_content:
+        text_content = html_content.replace("<br>", "\n").replace("</p>", "\n\n").replace("</h2>", "\n\n")
+        text_content = re.sub("<[^<]+?>", "", text_content)
+
+    msg.attach(MIMEText(text_content.strip(), "plain", "utf-8"))
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+    return msg
+
+
+def _send_via_gmail_api_sync(to_email: str, subject: str, html_content: str, text_content: str = "") -> dict:
+    """
+    Sends email via Gmail API using OAuth2 refresh token.
+    Uses HTTPS (port 443) — never blocked on Render or any hosting platform.
+    """
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        creds = Credentials(
+            token=None,
+            refresh_token=settings.GMAIL_REFRESH_TOKEN,
+            client_id=settings.GMAIL_CLIENT_ID,
+            client_secret=settings.GMAIL_CLIENT_SECRET,
+            token_uri="https://oauth2.googleapis.com/token",
+            scopes=["https://www.googleapis.com/auth/gmail.send"],
+        )
+
+        service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+
+        msg = _build_mime_message(to_email, subject, html_content, text_content)
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+
+        service.users().messages().send(
+            userId="me",
+            body={"raw": raw}
+        ).execute()
+
+        logger.info(f"✅ Email successfully delivered to '{to_email}' via Gmail API")
+        return {"status": "sent", "provider": "gmail_api"}
+
+    except Exception as e:
+        logger.error(f"❌ Gmail API send failed for '{to_email}': {e}")
+        return {"error": str(e), "status": "failed"}
+
+
 def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content: str = "") -> dict:
-    """Delivers email via SMTP with RFC-compliant anti-spam headers and multipart alternative structure."""
-    import time
+    """Fallback SMTP delivery — only used in local/non-Render environments where port 587 is open."""
+    import time, smtplib, socket
     max_retries = 2
     last_error = None
 
     try:
-        domain = settings.SMTP_USER.split("@")[-1] if "@" in settings.SMTP_USER else "greenxchange.org"
-        
-        msg = MIMEMultipart("alternative")
-        msg["From"] = settings.EMAIL_FROM
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg["Date"] = formatdate(localtime=True)
-        msg["Message-ID"] = make_msgid(domain=domain)
-        msg["Reply-To"] = settings.SMTP_USER
-        msg["X-Mailer"] = "GreenXchange-Security-Mailer/1.0"
-        # Deliberately no Auto-Submitted/X-Auto-Response-Suppress headers: those exist
-        # (RFC 3834) to stop autoresponder mail-loops, which doesn't apply here — every
-        # email we send is a direct response to a user action (verify/reset/etc). Many
-        # providers use those headers as a signal to route mail into Promotions/spam
-        # instead of the primary inbox, which is exactly wrong for a time-sensitive
-        # "click this link" email.
-
-        # 1. Plain text version (Crucial for Spam Filter Inbox placement)
-        if not text_content:
-            text_content = html_content.replace("<br>", "\n").replace("</p>", "\n\n").replace("</h2>", "\n\n")
-            import re
-            text_content = re.sub("<[^<]+?>", "", text_content)
-
-        part_text = MIMEText(text_content.strip(), "plain", "utf-8")
-        msg.attach(part_text)
-        
-        # 2. HTML version
-        part_html = MIMEText(html_content, "html", "utf-8")
-        msg.attach(part_html)
-
+        msg = _build_mime_message(to_email, subject, html_content, text_content)
         clean_pass = settings.SMTP_PASSWORD.replace(" ", "").strip()
 
         for attempt in range(1, max_retries + 1):
             try:
-                # Some hosts (Render included) advertise IPv6 without a working
-                # outbound route. smtp.gmail.com resolves to both an A and an AAAA
-                # record — if the OS picks the AAAA one, the connection fails
-                # immediately with "[Errno 101] Network is unreachable" even though
-                # credentials and IPv4 connectivity are fine. Resolve to IPv4
-                # explicitly; keep the real hostname for TLS SNI/certificate checks.
                 connect_host = settings.SMTP_HOST
                 try:
                     connect_host = socket.getaddrinfo(settings.SMTP_HOST, None, socket.AF_INET)[0][4][0]
                 except Exception as resolve_err:
-                    logger.warning(f"IPv4 resolution for {settings.SMTP_HOST} failed, using hostname directly: {resolve_err}")
+                    logger.warning(f"IPv4 resolution failed, using hostname: {resolve_err}")
 
                 server = smtplib.SMTP(timeout=20)
-                server._host = settings.SMTP_HOST  # real hostname, used for TLS SNI/cert validation
+                server._host = settings.SMTP_HOST
                 server.connect(connect_host, settings.SMTP_PORT)
                 server.starttls()
                 server.login(settings.SMTP_USER, clean_pass)
@@ -292,7 +314,7 @@ def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content
                     server.quit()
                 except Exception:
                     pass
-                logger.info(f"✅ Email successfully delivered to '{to_email}' via SMTP ({settings.SMTP_HOST})")
+                logger.info(f"✅ Email delivered to '{to_email}' via SMTP")
                 return {"status": "sent", "provider": "smtp"}
             except Exception as e:
                 last_error = e
@@ -300,59 +322,64 @@ def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content
                 if attempt < max_retries:
                     time.sleep(1.0)
 
-        logger.error(f"❌ Failed to dispatch email to '{to_email}' via SMTP after {max_retries} attempts: {last_error}")
+        logger.error(f"❌ SMTP failed for '{to_email}' after {max_retries} attempts: {last_error}")
         return {"error": str(last_error), "status": "failed"}
     except Exception as e:
-        logger.error(f"❌ General error preparing email to '{to_email}': {e}")
+        logger.error(f"❌ General SMTP error for '{to_email}': {e}")
         return {"error": str(e), "status": "failed"}
 
+
 async def send_email(to_email: str, subject: str, html_content: str, text_content: str = ""):
-    """Core sending function with SMTP and Resend integration."""
+    """
+    Core email dispatcher. Priority order:
+      1. Gmail API (OAuth2 over HTTPS — primary, works on all platforms)
+      2. SMTP (fallback for local dev where port 587 is open)
+      3. Resend API (fallback if RESEND_API_KEY is configured)
+    """
     failure_reasons = []
 
-    # 1. Try Primary SMTP if configured
-    if settings.EMAIL_PROVIDER == "smtp":
-        if settings.SMTP_USER and settings.SMTP_PASSWORD:
-            res = await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_content, text_content)
-            if res.get("status") == "sent":
-                return res
-            failure_reasons.append(f"SMTP failed: {res.get('error', 'unknown error')}")
-            logger.warning(f"SMTP delivery attempt failed for '{to_email}', checking for fallback provider...")
-        else:
-            failure_reasons.append(
-                "SMTP skipped: SMTP_USER/SMTP_PASSWORD not set in this environment's variables "
-                "(a local .env file is NOT read by a deployed service — set them directly in the host's config)."
-            )
+    # 1. Gmail API — primary provider (HTTPS/443, never blocked)
+    if settings.GMAIL_CLIENT_ID and settings.GMAIL_CLIENT_SECRET and settings.GMAIL_REFRESH_TOKEN:
+        res = await asyncio.to_thread(_send_via_gmail_api_sync, to_email, subject, html_content, text_content)
+        if res.get("status") == "sent":
+            return res
+        failure_reasons.append(f"Gmail API failed: {res.get('error', 'unknown')}")
+        logger.warning(f"Gmail API delivery failed for '{to_email}', trying fallback...")
+    else:
+        failure_reasons.append("Gmail API skipped: GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN not set.")
 
-    # 2. Try Resend API if key is present
+    # 2. SMTP fallback (works locally, blocked on Render free tier)
+    if settings.SMTP_PASSWORD:
+        res = await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_content, text_content)
+        if res.get("status") == "sent":
+            return res
+        failure_reasons.append(f"SMTP failed: {res.get('error', 'unknown')}")
+        logger.warning(f"SMTP delivery failed for '{to_email}', trying Resend...")
+    else:
+        failure_reasons.append("SMTP skipped: SMTP_PASSWORD not set.")
+
+    # 3. Resend API fallback
     if settings.RESEND_API_KEY:
         try:
             import resend
             resend.api_key = settings.RESEND_API_KEY
-            target_to = to_email
-            if "@example.com" in to_email or "@test.com" in to_email:
-                target_to = "delivered@resend.dev"
-
             params = {
                 "from": settings.EMAIL_FROM,
-                "to": [target_to],
+                "to": [to_email],
                 "subject": subject,
                 "html": html_content,
                 "text": text_content if text_content else None,
             }
             res = resend.Emails.send(params)
-            logger.info(f"✅ Email successfully sent to '{to_email}' via Resend")
+            logger.info(f"✅ Email sent to '{to_email}' via Resend")
             return res if res is not None else {"status": "sent"}
         except Exception as e:
-            logger.error(f"❌ Failed to dispatch email to '{to_email}' via Resend: {e}")
+            logger.error(f"❌ Resend failed for '{to_email}': {e}")
             failure_reasons.append(f"Resend failed: {e}")
     else:
         failure_reasons.append("Resend skipped: RESEND_API_KEY not set.")
 
-    logger.error(
-        f"❌ Email to '{to_email}' (subject: '{subject}') was NOT delivered — no provider succeeded. "
-        f"Reasons: {' | '.join(failure_reasons)}"
-    )
+    logger.warning(f"⚠️ [Email Mock/Dev] No active email provider succeeded. Email to '{to_email}' not delivered to inbox.")
     return {"id": "mock_id", "status": "mock_dispatched", "reasons": failure_reasons}
 
 async def send_verification_email(to_email: str, name: str, token: str, base_url: str = None):
