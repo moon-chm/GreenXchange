@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin123"
     MINIO_SECURE: bool = False
+    # Browser-reachable origin for MinIO-stored media (e.g. "https://media.example.com").
+    # MINIO_ENDPOINT above is often an internal/container hostname (e.g. "minio:9000")
+    # that isn't reachable from a client, so it must not be reused for public URLs.
+    # Left unset, previously-hardcoded "http://localhost:9000" behavior is preserved.
+    MINIO_PUBLIC_URL: str = ""
 
     # No hardcoded default: an app that can't authenticate anyone safely must not boot.
     # Set explicitly in .env for local dev; see .env.example.
@@ -41,6 +46,10 @@ class Settings(BaseSettings):
     # Computer Vision AI Models
     TREE_MODEL_PATH: str = ""
     PLANT_HEALTH_MODEL_PATH: str = ""
+
+    # Shared secret required on POST /api/environment/hardware (X-Hardware-Api-Key
+    # header). Left unset, that endpoint stays open for backward compatibility.
+    HARDWARE_API_KEY: str = ""
 
     @property
     def jwt_private_key(self) -> str:

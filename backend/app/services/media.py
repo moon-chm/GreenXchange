@@ -2,6 +2,7 @@ import io
 import os
 import logging
 from PIL import Image
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +16,19 @@ def get_minio_client():
     if _minio_client is None:
         try:
             from minio import Minio
-            endpoint = os.environ.get("MINIO_ENDPOINT", "localhost:9000")
+            # Prefer real process env vars (docker-compose / Render set these directly)
+            # for exact backward compatibility; fall back to Settings (which also picks
+            # up backend/.env) instead of a hardcoded literal for plain local runs.
+            endpoint = os.environ.get("MINIO_ENDPOINT") or settings.MINIO_ENDPOINT or "localhost:9000"
+            access_key = os.environ.get("MINIO_ACCESS_KEY") or settings.MINIO_ACCESS_KEY
+            secret_key = os.environ.get("MINIO_SECRET_KEY") or settings.MINIO_SECRET_KEY
+            secure_raw = os.environ.get("MINIO_SECURE")
+            secure = (secure_raw.lower() == "true") if secure_raw is not None else settings.MINIO_SECURE
             _minio_client = Minio(
                 endpoint,
-                access_key=os.environ.get("MINIO_ACCESS_KEY", "minioadmin"),
-                secret_key=os.environ.get("MINIO_SECRET_KEY", "minioadmin123"),
-                secure=os.environ.get("MINIO_SECURE", "false").lower() == "true"
+                access_key=access_key,
+                secret_key=secret_key,
+                secure=secure
             )
         except Exception as e:
             logger.warning(f"MinIO client init warning: {e}")

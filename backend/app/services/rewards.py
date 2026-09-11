@@ -354,25 +354,21 @@ async def create_org_payment_request(
     org_user = org_res.scalars().first()
     org_name = org_user.name if org_user else "Partner Organization"
 
-    # Dispatch email notification to target citizen
-    try:
-        from app.worker.email_tasks import task_send_org_payment_request_email
-        task_send_org_payment_request_email.delay(
-            target_user.email,
-            target_user.name,
-            org_name,
-            float(amount_gxc),
-            service_description
-        )
-    except Exception:
-        from app.services.email import send_org_payment_request_email
-        await send_org_payment_request_email(
-            target_user.email,
-            target_user.name,
-            org_name,
-            float(amount_gxc),
-            service_description
-        )
+    # Dispatch email notification to target citizen directly. Not routed through
+    # Celery: task.delay() only raises if the Redis broker itself is unreachable —
+    # if Redis is up but no worker process is consuming the queue (a worker is a
+    # separate process; see the `worker` service in docker-compose.yml), the task
+    # is queued successfully, no exception is ever raised, and the email silently
+    # never gets sent. A direct await here guarantees an actual send attempt, same
+    # as the verification/password-reset emails elsewhere in this codebase.
+    from app.services.email import send_org_payment_request_email
+    await send_org_payment_request_email(
+        target_user.email,
+        target_user.name,
+        org_name,
+        float(amount_gxc),
+        service_description
+    )
 
     return req
 

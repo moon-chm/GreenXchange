@@ -2,6 +2,7 @@ import base64
 import uuid
 import qrcode
 import io
+from app.core.config import settings
 
 def encode_base62(num: int) -> str:
     alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -21,7 +22,10 @@ def generate_scan_id(plant_uuid: uuid.UUID) -> str:
     return encode_base62(short_int)
 
 def generate_qr_code(scan_id: str) -> str:
-    url = f"https://greenxchange.io/scan/{scan_id}"
+    # Must match the frontend's actual public plant route
+    # (frontend/src/app/plants/public/[scan_id]/page.tsx), not a placeholder domain.
+    base_url = settings.FRONTEND_URL.rstrip("/")
+    url = f"{base_url}/plants/public/{scan_id}"
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_M,

@@ -12,11 +12,23 @@ from app.models.enums import VerificationStatus
 from app.utils.geo import haversine_distance, extract_exif_gps
 from app.services.media import sanitize_image, upload_to_minio
 from app.worker.tasks import verify_growth_update
+from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# MINIO_ENDPOINT is often an internal/container hostname not reachable from a
+# browser, so prefer an explicit public URL when configured; otherwise keep the
+# previous default so existing deployments see no behavior change.
+_MINIO_PUBLIC_BASE = (settings.MINIO_PUBLIC_URL or "http://localhost:9000").rstrip("/")
+
+
+def _public_media_url(image_url: str) -> str:
+    if image_url and image_url.startswith("s3://"):
+        return image_url.replace("s3://growth-updates/", f"{_MINIO_PUBLIC_BASE}/growth-updates/")
+    return image_url
 
 @router.post("/{plant_id}/growth")
 @router.post("/{plant_id}")
@@ -178,6 +190,6 @@ async def get_growth_updates(
             "confidence_score": u.confidence_score,
             "rejection_reason": u.rejection_reason,
             "timestamp": u.server_timestamp,
-            "image_url": u.image_url.replace("s3://growth-updates/", "http://localhost:9000/growth-updates/") if u.image_url.startswith("s3://") else u.image_url
+            "image_url": _public_media_url(u.image_url)
         } for u in updates
     ]
