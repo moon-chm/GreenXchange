@@ -9,7 +9,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-def _get_base_template(content_html: str, preview_text: str = "") -> str:
+def _get_base_template(content_html: str, preview_text: str = "", icon: str = "🌿") -> str:
     """Executive enterprise-grade HTML email layout matching GreenXchange identity."""
     preheader_html = f"""
     <!--[if !mso]><!-- -->
@@ -19,6 +19,12 @@ def _get_base_template(content_html: str, preview_text: str = "") -> str:
     <!--<![endif]-->
     """ if preview_text else ""
 
+    icon_badge_html = f"""
+        <div style="text-align: center; margin: 0 0 18px 0;">
+          <div class="icon-badge">{icon}</div>
+        </div>
+    """ if icon else ""
+
     return f"""<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en">
 <head>
@@ -26,6 +32,8 @@ def _get_base_template(content_html: str, preview_text: str = "") -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="format-detection" content="telephone=no" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
   <title>GreenXchange</title>
   <style type="text/css">
     body {{
@@ -57,9 +65,11 @@ def _get_base_template(content_html: str, preview_text: str = "") -> str:
       border: 1px solid #E2DEC9;
       border-radius: 14px;
       overflow: hidden;
+      box-shadow: 0 4px 24px rgba(28, 48, 33, 0.06);
     }}
     .email-header {{
       background-color: #1C3021;
+      background-image: linear-gradient(135deg, #1C3021 0%, #234227 100%);
       padding: 28px 32px;
       text-align: left;
       border-bottom: 3px solid #3E7345;
@@ -83,35 +93,49 @@ def _get_base_template(content_html: str, preview_text: str = "") -> str:
       margin: 4px 0 0 0;
     }}
     .email-body {{
-      padding: 32px 32px 28px 32px;
+      padding: 36px 32px 28px 32px;
       color: #1E3323;
       font-size: 15px;
-      line-height: 1.6;
+      line-height: 1.65;
+    }}
+    .icon-badge {{
+      display: inline-block;
+      width: 56px;
+      height: 56px;
+      line-height: 56px;
+      border-radius: 50%;
+      background-color: #E8F3EA;
+      border: 1px solid #D3E8D6;
+      font-size: 26px;
+      text-align: center;
     }}
     .email-heading {{
-      font-size: 20px;
+      font-size: 21px;
       font-weight: 700;
       color: #1C3021;
       margin: 0 0 16px 0;
       letter-spacing: -0.3px;
+      text-align: center;
     }}
     .btn {{
       display: inline-block;
       background-color: #2D5A34;
+      background-image: linear-gradient(135deg, #326238 0%, #21451F 100%);
       color: #FFFFFF !important;
       text-decoration: none;
       font-weight: 600;
-      font-size: 14px;
-      padding: 12px 28px;
+      font-size: 15px;
+      padding: 14px 32px;
       border-radius: 8px;
       text-align: center;
       letter-spacing: 0.2px;
+      box-shadow: 0 2px 10px rgba(45, 90, 52, 0.28);
     }}
     .callout {{
       background-color: #F6F8F6;
       border-left: 4px solid #3E7345;
-      padding: 16px 20px;
-      margin: 20px 0;
+      padding: 18px 20px;
+      margin: 22px 0;
       border-radius: 0 8px 8px 0;
     }}
     .stat-table {{
@@ -123,7 +147,7 @@ def _get_base_template(content_html: str, preview_text: str = "") -> str:
       border-spacing: 0;
     }}
     .stat-table td {{
-      padding: 12px 18px;
+      padding: 13px 18px;
       font-size: 14px;
     }}
     .stat-label {{
@@ -157,6 +181,29 @@ def _get_base_template(content_html: str, preview_text: str = "") -> str:
       color: #2D5A34;
       text-decoration: underline;
     }}
+    @media screen and (max-width: 600px) {{
+      .email-wrapper {{ padding: 16px 8px !important; }}
+      .email-header {{ padding: 22px 20px !important; }}
+      .email-body {{ padding: 28px 20px 22px 20px !important; }}
+      .email-footer {{ padding: 20px 20px !important; }}
+      .email-heading {{ font-size: 19px !important; }}
+      .btn {{ display: block !important; width: 100% !important; box-sizing: border-box !important; }}
+      .stat-table td {{ padding: 11px 14px !important; }}
+    }}
+    @media (prefers-color-scheme: dark) {{
+      body, .email-wrapper {{ background-color: #10160F !important; }}
+      .email-container {{ background-color: #17201A !important; border-color: #26362A !important; }}
+      .email-body {{ color: #E6EDE7 !important; }}
+      .email-heading {{ color: #F3F7F3 !important; }}
+      .icon-badge {{ background-color: #24362A !important; border-color: #34493A !important; }}
+      .callout {{ background-color: #1E2A20 !important; }}
+      .stat-table {{ border-color: #2A3B2E !important; }}
+      .stat-label {{ color: #A9C2AD !important; border-bottom-color: #2A3B2E !important; }}
+      .stat-value {{ color: #F0F5F0 !important; border-bottom-color: #2A3B2E !important; }}
+      .email-footer {{ background-color: #121A13 !important; color: #8FA692 !important; border-top-color: #223226 !important; }}
+      .link-fallback {{ color: #9BB89E !important; border-top-color: #223226 !important; }}
+      .link-fallback a {{ color: #7FC488 !important; }}
+    }}
   </style>
 </head>
 <body>
@@ -164,10 +211,11 @@ def _get_base_template(content_html: str, preview_text: str = "") -> str:
   <div class="email-wrapper">
     <div class="email-container">
       <div class="email-header">
-        <h1 class="brand-name">Green<span>Xchange</span></h1>
+        <h1 class="brand-name">🌱 Green<span>Xchange</span></h1>
         <p class="brand-tagline">Environmental Intelligence &amp; Climate Rewards</p>
       </div>
       <div class="email-body">
+        {icon_badge_html}
         {content_html}
       </div>
       <div class="email-footer">
@@ -197,9 +245,13 @@ def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content
         msg["Message-ID"] = make_msgid(domain=domain)
         msg["Reply-To"] = settings.SMTP_USER
         msg["X-Mailer"] = "GreenXchange-Security-Mailer/1.0"
-        msg["Auto-Submitted"] = "auto-generated"
-        msg["X-Auto-Response-Suppress"] = "All"
-        
+        # Deliberately no Auto-Submitted/X-Auto-Response-Suppress headers: those exist
+        # (RFC 3834) to stop autoresponder mail-loops, which doesn't apply here — every
+        # email we send is a direct response to a user action (verify/reset/etc). Many
+        # providers use those headers as a signal to route mail into Promotions/spam
+        # instead of the primary inbox, which is exactly wrong for a time-sensitive
+        # "click this link" email.
+
         # 1. Plain text version (Crucial for Spam Filter Inbox placement)
         if not text_content:
             text_content = html_content.replace("<br>", "\n").replace("</p>", "\n\n").replace("</h2>", "\n\n")
@@ -241,12 +293,21 @@ def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content
 
 async def send_email(to_email: str, subject: str, html_content: str, text_content: str = ""):
     """Core sending function with SMTP and Resend integration."""
+    failure_reasons = []
+
     # 1. Try Primary SMTP if configured
-    if settings.EMAIL_PROVIDER == "smtp" and settings.SMTP_USER and settings.SMTP_PASSWORD:
-        res = await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_content, text_content)
-        if res.get("status") == "sent":
-            return res
-        logger.warning(f"SMTP delivery attempt failed for '{to_email}', checking for fallback provider...")
+    if settings.EMAIL_PROVIDER == "smtp":
+        if settings.SMTP_USER and settings.SMTP_PASSWORD:
+            res = await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_content, text_content)
+            if res.get("status") == "sent":
+                return res
+            failure_reasons.append(f"SMTP failed: {res.get('error', 'unknown error')}")
+            logger.warning(f"SMTP delivery attempt failed for '{to_email}', checking for fallback provider...")
+        else:
+            failure_reasons.append(
+                "SMTP skipped: SMTP_USER/SMTP_PASSWORD not set in this environment's variables "
+                "(a local .env file is NOT read by a deployed service — set them directly in the host's config)."
+            )
 
     # 2. Try Resend API if key is present
     if settings.RESEND_API_KEY:
@@ -269,13 +330,15 @@ async def send_email(to_email: str, subject: str, html_content: str, text_conten
             return res if res is not None else {"status": "sent"}
         except Exception as e:
             logger.error(f"❌ Failed to dispatch email to '{to_email}' via Resend: {e}")
-            if settings.EMAIL_PROVIDER != "smtp":
-                return {"error": str(e), "status": "failed"}
+            failure_reasons.append(f"Resend failed: {e}")
+    else:
+        failure_reasons.append("Resend skipped: RESEND_API_KEY not set.")
 
-    logger.warning(
-        f"⚠️ [Email Mock/Dev] No active email provider succeeded. Email to '{to_email}' not delivered to inbox."
+    logger.error(
+        f"❌ Email to '{to_email}' (subject: '{subject}') was NOT delivered — no provider succeeded. "
+        f"Reasons: {' | '.join(failure_reasons)}"
     )
-    return {"id": "mock_id", "status": "mock_dispatched"}
+    return {"id": "mock_id", "status": "mock_dispatched", "reasons": failure_reasons}
 
 async def send_verification_email(to_email: str, name: str, token: str, base_url: str = None):
     """Dispatches Account Email Verification link with clean corporate styling."""
@@ -316,7 +379,7 @@ GreenXchange Environmental Network
 https://greenxchange.org
 """
 
-    html = _get_base_template(content_html, preview_text="Please verify your email to activate your GreenXchange account.")
+    html = _get_base_template(content_html, preview_text="Please verify your email to activate your GreenXchange account.", icon="✅")
     return await send_email(to_email, "Verify your GreenXchange account", html, plain_text)
 
 async def send_password_reset_email(to_email: str, name: str, token: str, base_url: str = None):
@@ -358,7 +421,7 @@ GreenXchange Environmental Network
 https://greenxchange.org
 """
 
-    html = _get_base_template(content_html, preview_text="Reset instructions for your GreenXchange password.")
+    html = _get_base_template(content_html, preview_text="Reset instructions for your GreenXchange password.", icon="🔑")
     return await send_email(to_email, "Reset your GreenXchange password", html, plain_text)
 
 async def send_org_payment_request_email(to_email: str, citizen_name: str, org_name: str, amount_gxc: float, description: str, base_url: str = None):
@@ -372,9 +435,9 @@ async def send_org_payment_request_email(to_email: str, citizen_name: str, org_n
       <p>An authorized partner organization, <strong>{org_name}</strong>, has issued a GXC service payment request to your account wallet.</p>
       
       <div class="callout">
-        <p style="margin: 0 0 6px 0; font-size: 13px; color: #58705E; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Requested Amount</p>
-        <p style="margin: 0 0 12px 0; font-size: 22px; font-weight: 700; color: #1C3021;">{amount_gxc:.1f} GXC</p>
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: #58705E; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Service Description</p>
+        <p style="margin: 0 0 6px 0; font-size: 13px; color: #58705E; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">💰 Requested Amount</p>
+        <p style="margin: 0 0 14px 0; font-size: 26px; font-weight: 700; color: #1C3021;">{amount_gxc:.1f} <span style="font-size: 15px; font-weight: 600; color: #4A6350;">GXC</span></p>
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: #58705E; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">📋 Service Description</p>
         <p style="margin: 0; font-size: 14px; color: #1E3323; font-style: italic;">"{description}"</p>
       </div>
 
@@ -407,7 +470,7 @@ To review and authorize or reject this payment, please visit your Rewards Hub:
 GreenXchange Environmental Network
 """
 
-    html = _get_base_template(content_html, preview_text=f"Payment request of {amount_gxc:.1f} GXC from {org_name}.")
+    html = _get_base_template(content_html, preview_text=f"Payment request of {amount_gxc:.1f} GXC from {org_name}.", icon="💳")
     return await send_email(to_email, f"Action Required: Payment request from {org_name}", html, plain_text)
 
 async def send_weekly_digest_email(to_email: str, name: str, stats: dict):
@@ -424,15 +487,15 @@ async def send_weekly_digest_email(to_email: str, name: str, stats: dict):
       
       <table class="stat-table">
         <tr>
-          <td class="stat-label">Active Plants Monitored</td>
+          <td class="stat-label">🌳 Active Plants Monitored</td>
           <td class="stat-value">{plants_count}</td>
         </tr>
         <tr>
-          <td class="stat-label">Estimated Carbon Sequestered</td>
+          <td class="stat-label">🌍 Estimated Carbon Sequestered</td>
           <td class="stat-value">{carbon_offset_kg:.1f} kg CO2</td>
         </tr>
         <tr>
-          <td class="stat-label" style="border-bottom: none;">Available GXC Token Balance</td>
+          <td class="stat-label" style="border-bottom: none;">🪙 Available GXC Token Balance</td>
           <td class="stat-value" style="border-bottom: none; color: #2D5A34;">{gxc_balance} GXC</td>
         </tr>
       </table>
@@ -462,5 +525,5 @@ View your full dashboard: {dashboard_url}
 GreenXchange Environmental Network
 """
 
-    html = _get_base_template(content_html, preview_text=f"Weekly Eco Digest: {plants_count} active plants, {carbon_offset_kg:.1f} kg CO2 sequestered.")
+    html = _get_base_template(content_html, preview_text=f"Weekly Eco Digest: {plants_count} active plants, {carbon_offset_kg:.1f} kg CO2 sequestered.", icon="📊")
     return await send_email(to_email, "Your GreenXchange Weekly Environmental Digest", html, plain_text)
