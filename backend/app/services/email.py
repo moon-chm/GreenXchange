@@ -1,6 +1,7 @@
 import logging
 import uuid
 import smtplib
+import socket
 import asyncio
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -269,7 +270,21 @@ def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content
 
         for attempt in range(1, max_retries + 1):
             try:
-                server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20)
+                # Some hosts (Render included) advertise IPv6 without a working
+                # outbound route. smtp.gmail.com resolves to both an A and an AAAA
+                # record — if the OS picks the AAAA one, the connection fails
+                # immediately with "[Errno 101] Network is unreachable" even though
+                # credentials and IPv4 connectivity are fine. Resolve to IPv4
+                # explicitly; keep the real hostname for TLS SNI/certificate checks.
+                connect_host = settings.SMTP_HOST
+                try:
+                    connect_host = socket.getaddrinfo(settings.SMTP_HOST, None, socket.AF_INET)[0][4][0]
+                except Exception as resolve_err:
+                    logger.warning(f"IPv4 resolution for {settings.SMTP_HOST} failed, using hostname directly: {resolve_err}")
+
+                server = smtplib.SMTP(timeout=20)
+                server._host = settings.SMTP_HOST  # real hostname, used for TLS SNI/cert validation
+                server.connect(connect_host, settings.SMTP_PORT)
                 server.starttls()
                 server.login(settings.SMTP_USER, clean_pass)
                 server.sendmail(settings.SMTP_USER, [to_email], msg.as_string())
