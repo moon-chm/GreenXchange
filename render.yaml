@@ -21,7 +21,7 @@ services:
   - type: web
     name: greenxchange-backend
     env: docker
-    plan: starter          # $7/mo — required for PyTorch + model RAM (512 MB free tier insufficient)
+    plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     envVars:
@@ -49,21 +49,23 @@ services:
       - key: JWT_PUBLIC_KEY_B64
         sync: false
 
-      # ── Email ─────────────────────────────────────────────────
+      # ── Email (Gmail API OAuth2 — works on Render free tier via HTTPS/443) ──
       - key: EMAIL_PROVIDER
-        value: smtp
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: 587
-      - key: SMTP_USER
+        value: gmail_api
+      - key: GMAIL_CLIENT_ID
+        sync: false                    # Set in Render dashboard
+      - key: GMAIL_CLIENT_SECRET
+        sync: false                    # Set in Render dashboard
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false                    # Set in Render dashboard
+      - key: GMAIL_SENDER
         value: gogreenxchange.official@gmail.com
-      - key: SMTP_PASSWORD
-        sync: false                    # Set in Render dashboard (app password)
-      - key: RESEND_API_KEY
-        sync: false
       - key: EMAIL_FROM
         value: "GreenXchange <gogreenxchange.official@gmail.com>"
+      - key: SMTP_PASSWORD
+        sync: false                    # Legacy fallback, keep for local dev
+      - key: RESEND_API_KEY
+        sync: false
       - key: FRONTEND_URL
         value: https://greenxchange-frontend.onrender.com
 
