@@ -27,6 +27,19 @@ cp .env.example .env
 ```
 Ensure you update passwords and add your `OPENAI_API_KEY`.
 
+**Required — no hardcoded defaults ship in source.** The backend will refuse to start until these are set in `.env`:
+- `DATABASE_URL` — full Postgres connection string, matching your `POSTGRES_*` values above.
+- `SECRET_KEY` — random string, at least 32 characters. Generate one with:
+  ```bash
+  python -c "import secrets; print(secrets.token_urlsafe(32))"
+  ```
+- If you set `ALGORITHM=RS256` instead of the default `HS256`, you must also generate an RSA key pair:
+  ```bash
+  python backend/scripts/generate_keys.py
+  ```
+  This appends `JWT_PRIVATE_KEY_B64`/`JWT_PUBLIC_KEY_B64` to your `.env`. If `ALGORITHM=RS256` is set but these keys are missing or invalid, the app fails to start rather than silently falling back to `HS256` — this is intentional and applies in every environment, including local development.
+- `SMTP_PASSWORD` is optional locally — leave it blank and outbound email gracefully falls back to Resend (if `RESEND_API_KEY` is set) or is skipped with a logged failure.
+
 ### 2. Generate Local TLS & Database SSL Certificates
 For local development, Nginx and Postgres require self-signed certificates. Run the following command from the project root:
 ```bash
