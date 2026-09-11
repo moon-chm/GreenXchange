@@ -229,12 +229,16 @@ export default function PlantRegistrationModal({
       let resolvedSpeciesId: string | undefined;
       if (plantName && speciesList.length > 0) {
         const pLower = plantName.toLowerCase();
+        const pClean = pLower.replace(" tree", "").replace(" plant", "").trim();
         const matched = speciesList.find((s: any) => {
           const sName = (s.common_name || "").toLowerCase();
+          const sClean = sName.replace(" tree", "").replace(" plant", "").trim();
           return (
             sName === pLower ||
-            sName.includes(pLower) ||
-            pLower.includes(sName.replace(" tree", "").replace(" plant", "").trim())
+            sClean === pClean ||
+            sClean.includes(pClean) ||
+            pClean.includes(sClean) ||
+            sName.includes(pClean)
           );
         });
         if (matched) {
@@ -267,7 +271,7 @@ export default function PlantRegistrationModal({
     setError(null);
     setCustomSpeciesName("");
     setFormData({
-      species_id: speciesList.length > 0 ? speciesList[0].id : "",
+      species_id: "",
       common_name: "",
       space_type: "indoor",
       planting_date: new Date().toISOString().split("T")[0],

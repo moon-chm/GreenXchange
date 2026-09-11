@@ -27,6 +27,10 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"PostGIS extension notice (non-fatal): {e}")
             await conn.run_sync(Base.metadata.create_all)
+            try:
+                await conn.execute(text("ALTER TABLE users ALTER COLUMN is_active SET DEFAULT FALSE;"))
+            except Exception as e:
+                logger.warning(f"Column default alter notice (non-fatal): {e}")
         logger.info("✅ Database tables verified and created successfully.")
     except Exception as e:
         logger.error(f"❌ Database table initialization error: {e}")

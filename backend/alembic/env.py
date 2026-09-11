@@ -25,6 +25,9 @@ target_metadata = Base.metadata
 
 # Set the sqlalchemy url from our app settings
 db_url = settings.DATABASE_URL
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
 if db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 elif db_url.startswith("postgresql+psycopg2://"):
@@ -33,6 +36,9 @@ elif db_url.startswith("postgresql+psycopg2://"):
 use_ssl = False
 if "sslmode=require" in db_url:
     db_url = db_url.replace("?sslmode=require", "").replace("&sslmode=require", "")
+    use_ssl = True
+
+if ".render.com" in db_url or "onrender.com" in db_url:
     use_ssl = True
 
 config.set_main_option("sqlalchemy.url", db_url)

@@ -64,9 +64,9 @@ async def register_plant(
             candidate_species = result.scalars().first()
             if candidate_species:
                 if plant_name:
-                    p_low = plant_name.lower()
-                    c_low = candidate_species.common_name.lower()
-                    if p_low in c_low or c_low in p_low:
+                    p_clean = plant_name.lower().replace(" tree", "").replace(" plant", "").strip()
+                    c_clean = candidate_species.common_name.lower().replace(" tree", "").replace(" plant", "").strip()
+                    if p_clean in c_clean or c_clean in p_clean:
                         species = candidate_species
                 else:
                     species = candidate_species
@@ -75,11 +75,13 @@ async def register_plant(
 
     # 2. Try matching by common name (case-insensitive and prefix/fuzzy search)
     if not species and plant_name:
+        p_clean = plant_name.strip()
+        p_root = p_clean.lower().replace(" tree", "").replace(" plant", "").strip()
         result = await db.execute(
             select(PlantSpecies).filter(
-                (PlantSpecies.common_name.ilike(plant_name)) |
-                (PlantSpecies.common_name.ilike(f"{plant_name}%")) |
-                (PlantSpecies.common_name.ilike(f"%{plant_name}%"))
+                (PlantSpecies.common_name.ilike(p_clean)) |
+                (PlantSpecies.common_name.ilike(f"{p_root}%")) |
+                (PlantSpecies.common_name.ilike(f"%{p_root}%"))
             ).limit(1)
         )
         species = result.scalars().first()

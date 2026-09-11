@@ -269,9 +269,18 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
                 <h2 className="font-display text-2xl md:text-3xl font-bold text-canopy leading-tight">
                   {plant.common_name || plant.species_name}
                 </h2>
-                <p className="text-sm italic text-canopy/60 mt-1">
-                  {plant.scientific_name || plant.species_name}
-                </p>
+                {plant.scientific_name ? (
+                  <p className="text-sm italic text-canopy/60 mt-1">
+                    {plant.scientific_name}
+                  </p>
+                ) : plant.species_name &&
+                  plant.common_name &&
+                  plant.species_name.trim().toLowerCase() !== plant.common_name.trim().toLowerCase() &&
+                  !(plant.species_name.toLowerCase().includes("neem") && !plant.common_name.toLowerCase().includes("neem")) ? (
+                  <p className="text-sm italic text-canopy/60 mt-1">
+                    Species: {plant.species_name}
+                  </p>
+                ) : null}
               </div>
 
               {/* Spec Grid */}

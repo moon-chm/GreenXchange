@@ -66,4 +66,4 @@ RUN echo "Downloading Plant Health model (Model 2)..." && \
     echo "Model 2 downloaded successfully: $(du -sh "/app/models/model 2/new-plant_health_resnet18_balanced.pth" | cut -f1)") || \
     echo "Notice: Model 2 release not found or offline. Backend will use baseline health scoring until release is published."
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "alembic upgrade head || true; uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
