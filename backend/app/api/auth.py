@@ -195,11 +195,11 @@ async def login(
     db: AsyncSession = Depends(get_db),
     form_data: OAuth2PasswordRequestForm = Depends()
 ):
-    try:
-        await check_rate_limit(request)
-    except Exception:
-        pass
-    
+    # check_rate_limit already swallows internal errors (e.g. Redis being down)
+    # and only raises HTTPException(429) when the IP is actually blocked — that
+    # exception must propagate here, not be caught, or the lockout never fires.
+    await check_rate_limit(request)
+
     clean_email = form_data.username.strip().lower()
     try:
         result = await db.execute(select(User).where(User.email == clean_email))

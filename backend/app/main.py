@@ -127,7 +127,16 @@ async def _seed_default_species():
         logger.info(f"✅ Seeded {len(DEFAULT_SPECIES)} default plant species.")
 
 async def _seed_default_orgs():
-    """Ensure default government-allocated organization accounts exist."""
+    """
+    Ensure default government-allocated organization accounts exist.
+
+    Passwords are never hardcoded in source: each org is only created when its
+    password is supplied via environment variable. This never rewrites
+    password_hash for an org that already exists (the else-branch below only
+    normalizes role/is_org/email_verified flags), so already-provisioned
+    accounts and their current passwords are completely unaffected by this.
+    """
+    import os
     import uuid as _uuid
     from app.db.session import AsyncSessionLocal
     from app.models.users import User
@@ -137,21 +146,21 @@ async def _seed_default_orgs():
     DEFAULT_ORGS = [
         {
             "email": "testorg@nursery.gov.in",
-            "password": "TestOrg123!",
+            "password_env": "SEED_TESTORG_PASSWORD",
             "name": "Government Test Nursery Org",
             "role": "ORGANIZATION",
             "is_org": True,
         },
         {
             "email": "gov_nursery_delhi@greenxchange.gov.in",
-            "password": "GovNurseryPass2026!",
+            "password_env": "SEED_GOV_NURSERY_DELHI_PASSWORD",
             "name": "Delhi Municipal Green Nursery",
             "role": "ORGANIZATION",
             "is_org": True,
         },
         {
             "email": "ecocare_partner@greenxchange.org",
-            "password": "EcoPartnerPass2026!",
+            "password_env": "SEED_ECOCARE_PARTNER_PASSWORD",
             "name": "EcoCare Bio-Services Org",
             "role": "ORGANIZATION",
             "is_org": True,
@@ -163,10 +172,17 @@ async def _seed_default_orgs():
             result = await session.execute(_select(User).filter(User.email == org["email"]))
             existing = result.scalars().first()
             if not existing:
+                password = os.getenv(org["password_env"])
+                if not password:
+                    logger.info(
+                        f"Skipping seed of '{org['email']}': set {org['password_env']} "
+                        "in the environment to auto-provision this account."
+                    )
+                    continue
                 new_org = User(
                     id=_uuid.uuid4(),
                     email=org["email"],
-                    password_hash=get_password_hash(org["password"]),
+                    password_hash=get_password_hash(password),
                     name=org["name"],
                     location_lat=28.6139,
                     location_lng=77.2090,

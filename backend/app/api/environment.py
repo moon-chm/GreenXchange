@@ -1,7 +1,9 @@
 import json
+import logging
+import secrets
 import time
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from app.api.deps import get_current_user
 from app.models.users import User
 from app.utils.geo import get_tile_id
@@ -9,6 +11,8 @@ from app.worker.tasks import refresh_environment_profile
 from app.services.environment import generate_environment_profile
 import redis.asyncio as redis
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
@@ -58,7 +62,21 @@ class HardwareTelemetryPayload(BaseModel):
     alert_level: Optional[int] = 140
     buzzer_active: Optional[bool] = False
 
-@router.post("/hardware")
+async def verify_hardware_api_key(x_hardware_api_key: Optional[str] = Header(None, alias="X-Hardware-Api-Key")):
+    """
+    Opt-in shared-secret gate for hardware telemetry ingestion. If HARDWARE_API_KEY
+    isn't configured, this endpoint stays open (unchanged prior behavior) so existing
+    unconfigured devices keep working, but logs a warning on every call. Once
+    HARDWARE_API_KEY is set, callers must present a matching X-Hardware-Api-Key header.
+    """
+    if not settings.HARDWARE_API_KEY:
+        logger.warning("HARDWARE_API_KEY not set — /environment/hardware ingestion is unauthenticated.")
+        return
+    if not x_hardware_api_key or not secrets.compare_digest(x_hardware_api_key, settings.HARDWARE_API_KEY):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing hardware API key")
+
+
+@router.post("/hardware", dependencies=[Depends(verify_hardware_api_key)])
 async def post_hardware_telemetry(payload: HardwareTelemetryPayload):
     data = payload.dict()
     data["timestamp"] = int(time.time())

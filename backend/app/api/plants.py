@@ -48,10 +48,10 @@ async def register_plant(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    try:
-        await check_endpoint_rate_limit(request, "plant_register", max_requests=100, window_seconds=3600)
-    except Exception as e:
-        logger.warning(f"Rate limiter warning on plant register: {e}")
+    # check_endpoint_rate_limit already swallows internal errors (e.g. Redis being
+    # down) and only raises HTTPException(429) when the caller is over the limit —
+    # that exception must propagate here, not be caught, or the limit never fires.
+    await check_endpoint_rate_limit(request, "plant_register", max_requests=100, window_seconds=3600)
 
     plant_name = (req.common_name or "").strip()
     species = None

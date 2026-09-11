@@ -1,4 +1,6 @@
 import asyncio
+import os
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,19 @@ from app.models.community import CommunityDrive
 from app.models.news import NewsFeedItem
 from app.services.rewards import seed_default_marketplace_items
 from app.core.security import get_password_hash
+
+
+def _seed_password(env_var: str, label: str) -> str:
+    """
+    Never hardcode demo passwords in source. Uses the env var if set; otherwise
+    generates a random one for this run and prints it so the account is still usable.
+    """
+    pw = os.getenv(env_var)
+    if pw:
+        return pw
+    generated = secrets.token_urlsafe(12)
+    print(f"  [i] {env_var} not set — generated a random password for {label}: {generated}")
+    return generated
 
 async def seed_demo_data():
     async with AsyncSessionLocal() as session:
@@ -31,11 +46,11 @@ async def seed_demo_data():
                     co2_absorption_rate=12.5,
                     pm25_absorption_rate=8.2,
                     voc_absorption_rate=15.0,
-                    toxicity_level=ToxicityLevel.MODERATE,
+                    toxicity_level=ToxicityLevel.MEDIUM,
                     allergen_risk=AllergenRisk.LOW,
                     maintenance_level=MaintenanceLevel.LOW,
                     growth_rate=GrowthRate.SLOW,
-                    space_type_compatibility=[SpaceType.INDOOR, SpaceType.BALCONY],
+                    space_type_compatibility=[SpaceType.INDOOR, SpaceType.OUTDOOR_BALCONY],
                     temperature_range="15-30C",
                     soil_ph_range="6.0-7.5",
                     data_source="NASA Clean Air Study"
@@ -53,7 +68,7 @@ async def seed_demo_data():
                     allergen_risk=AllergenRisk.LOW,
                     maintenance_level=MaintenanceLevel.LOW,
                     growth_rate=GrowthRate.FAST,
-                    space_type_compatibility=[SpaceType.OUTDOOR, SpaceType.ROOFTOP],
+                    space_type_compatibility=[SpaceType.OUTDOOR_GARDEN, SpaceType.PUBLIC_PARK],
                     temperature_range="20-40C",
                     soil_ph_range="5.5-8.5",
                     data_source="Urban Forestry Research"
@@ -68,9 +83,9 @@ async def seed_demo_data():
                     pm25_absorption_rate=14.1,
                     voc_absorption_rate=19.4,
                     toxicity_level=ToxicityLevel.HIGH,
-                    allergen_risk=AllergenRisk.MODERATE,
-                    maintenance_level=MaintenanceLevel.MODERATE,
-                    growth_rate=GrowthRate.MEDIUM,
+                    allergen_risk=AllergenRisk.MEDIUM,
+                    maintenance_level=MaintenanceLevel.MEDIUM,
+                    growth_rate=GrowthRate.MODERATE,
                     space_type_compatibility=[SpaceType.INDOOR],
                     temperature_range="18-28C",
                     soil_ph_range="5.8-6.8",
@@ -89,7 +104,7 @@ async def seed_demo_data():
                     allergen_risk=AllergenRisk.LOW,
                     maintenance_level=MaintenanceLevel.LOW,
                     growth_rate=GrowthRate.FAST,
-                    space_type_compatibility=[SpaceType.BALCONY, SpaceType.INDOOR, SpaceType.OUTDOOR],
+                    space_type_compatibility=[SpaceType.OUTDOOR_BALCONY, SpaceType.INDOOR, SpaceType.OUTDOOR_GARDEN],
                     temperature_range="20-35C",
                     soil_ph_range="6.0-7.5",
                     data_source="Botanical Survey of India"
@@ -103,11 +118,11 @@ async def seed_demo_data():
                     co2_absorption_rate=11.0,
                     pm25_absorption_rate=6.5,
                     voc_absorption_rate=12.8,
-                    toxicity_level=ToxicityLevel.MODERATE,
+                    toxicity_level=ToxicityLevel.MEDIUM,
                     allergen_risk=AllergenRisk.LOW,
                     maintenance_level=MaintenanceLevel.LOW,
-                    growth_rate=GrowthRate.MEDIUM,
-                    space_type_compatibility=[SpaceType.INDOOR, SpaceType.BALCONY],
+                    growth_rate=GrowthRate.MODERATE,
+                    space_type_compatibility=[SpaceType.INDOOR, SpaceType.OUTDOOR_BALCONY],
                     temperature_range="15-35C",
                     soil_ph_range="6.0-7.0",
                     data_source="Ecosystem Health Journal"
@@ -123,10 +138,11 @@ async def seed_demo_data():
         res = await session.execute(select(User).filter(User.email == "admin@greenxchange.org"))
         admin = res.scalars().first()
         if not admin:
+            admin_password = _seed_password("SEED_ADMIN_PASSWORD", "admin@greenxchange.org")
             admin = User(
                 id=uuid.uuid4(),
                 email="admin@greenxchange.org",
-                password_hash=get_password_hash("AdminPass123!"),
+                password_hash=get_password_hash(admin_password),
                 name="GreenXchange Admin",
                 location_lat=28.6139,
                 location_lng=77.2090,
@@ -143,10 +159,11 @@ async def seed_demo_data():
         res_org1 = await session.execute(select(User).filter(User.email == "gov_nursery_delhi@greenxchange.gov.in"))
         org1 = res_org1.scalars().first()
         if not org1:
+            org1_password = _seed_password("SEED_GOV_NURSERY_DELHI_PASSWORD", "gov_nursery_delhi@greenxchange.gov.in")
             org1 = User(
                 id=uuid.uuid4(),
                 email="gov_nursery_delhi@greenxchange.gov.in",
-                password_hash=get_password_hash("GovNurseryPass2026!"),
+                password_hash=get_password_hash(org1_password),
                 name="Delhi Municipal Green Nursery",
                 location_lat=28.6139,
                 location_lng=77.2090,
@@ -155,16 +172,17 @@ async def seed_demo_data():
             )
             session.add(org1)
             await session.flush()
-            print("  [+] Government Allocated Org 1 created: gov_nursery_delhi@greenxchange.gov.in (Pass: GovNurseryPass2026!)")
+            print("  [+] Government Allocated Org 1 created: gov_nursery_delhi@greenxchange.gov.in")
 
         # Government Allocated Organization 2: EcoCare Bio-Services Org
         res_org2 = await session.execute(select(User).filter(User.email == "ecocare_partner@greenxchange.org"))
         org2 = res_org2.scalars().first()
         if not org2:
+            org2_password = _seed_password("SEED_ECOCARE_PARTNER_PASSWORD", "ecocare_partner@greenxchange.org")
             org2 = User(
                 id=uuid.uuid4(),
                 email="ecocare_partner@greenxchange.org",
-                password_hash=get_password_hash("EcoPartnerPass2026!"),
+                password_hash=get_password_hash(org2_password),
                 name="EcoCare Bio-Services Org",
                 location_lat=28.6139,
                 location_lng=77.2090,
@@ -173,16 +191,17 @@ async def seed_demo_data():
             )
             session.add(org2)
             await session.flush()
-            print("  [+] Government Allocated Org 2 created: ecocare_partner@greenxchange.org (Pass: EcoPartnerPass2026!)")
+            print("  [+] Government Allocated Org 2 created: ecocare_partner@greenxchange.org")
 
         # Government Test Organization: Government Test Nursery Org
         res_testorg = await session.execute(select(User).filter(User.email == "testorg@nursery.gov.in"))
         testorg = res_testorg.scalars().first()
         if not testorg:
+            testorg_password = _seed_password("SEED_TESTORG_PASSWORD", "testorg@nursery.gov.in")
             testorg = User(
                 id=uuid.uuid4(),
                 email="testorg@nursery.gov.in",
-                password_hash=get_password_hash("TestOrg123!"),
+                password_hash=get_password_hash(testorg_password),
                 name="Government Test Nursery Org",
                 location_lat=28.6139,
                 location_lng=77.2090,
@@ -191,16 +210,17 @@ async def seed_demo_data():
             )
             session.add(testorg)
             await session.flush()
-            print("  [+] Test Org created: testorg@nursery.gov.in (Pass: TestOrg123!)")
+            print("  [+] Test Org created: testorg@nursery.gov.in")
 
 
         res_demo = await session.execute(select(User).filter(User.email == "test3@example.com"))
         demo_user = res_demo.scalars().first()
         if not demo_user:
+            demo_user_password = _seed_password("SEED_DEMO_USER_PASSWORD", "test3@example.com")
             demo_user = User(
                 id=uuid.uuid4(),
                 email="test3@example.com",
-                password_hash=get_password_hash("password123"),
+                password_hash=get_password_hash(demo_user_password),
                 name="Demo Eco Gardener",
                 location_lat=28.6139,
                 location_lng=77.2090,

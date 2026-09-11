@@ -65,15 +65,19 @@ async def run_verification(update_id_str: str):
         if not update:
             return
             
-        from app.services.media import minio_client, BUCKET_NAME
-        
+        from app.services.media import get_minio_client, BUCKET_NAME
+
         obj_name = update.image_url.split("/")[-1]
-        
+
         try:
             from app.models.plants import Plant
             plant_result = await session.execute(select(Plant).filter(Plant.id == update.plant_id))
             plant = plant_result.scalars().first()
-            
+
+            minio_client = get_minio_client()
+            if minio_client is None:
+                raise RuntimeError("MinIO client unavailable for deferred CV verification")
+
             response = minio_client.get_object(BUCKET_NAME, obj_name)
             image_bytes = response.read()
             response.close()
