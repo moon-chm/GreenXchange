@@ -24,6 +24,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Install sharp in standalone runner for Next.js image optimization
+RUN npm install sharp
+
 # Copy only the built output and production node_modules
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
