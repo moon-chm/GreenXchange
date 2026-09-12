@@ -379,6 +379,10 @@ for router_obj, prefix in routers_list:
     app.include_router(router_obj, prefix=f"/api/{prefix}", tags=[prefix])
     app.include_router(router_obj, prefix=f"/{prefix}", tags=[prefix])
 
+# Also mount growth endpoints under /plants so /plants/{id}/growth and /api/plants/{id}/growth work transparently
+app.include_router(growth.router, prefix="/api/plants", tags=["plants", "growth"])
+app.include_router(growth.router, prefix="/plants", tags=["plants", "growth"])
+
 from fastapi.responses import JSONResponse, RedirectResponse
 
 @app.get("/verify-email")
@@ -393,6 +397,6 @@ async def root_reset_password_redirect(token: str = ""):
     frontend_url = settings.FRONTEND_URL.rstrip("/")
     return RedirectResponse(url=f"{frontend_url}/reset-password?token={token}")
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {"message": "GreenXchange API", "status": "online", "version": "1.0.0"}

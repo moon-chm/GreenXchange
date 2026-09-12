@@ -15,6 +15,7 @@ COPY . .
 # NEXT_PUBLIC_API_URL is baked in at build time via render.yaml env var
 ARG NEXT_PUBLIC_API_URL=https://greenxchange-backend.onrender.com
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV DOCKER_BUILD=1
 
 RUN npm run build
 

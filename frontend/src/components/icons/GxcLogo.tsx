@@ -30,6 +30,7 @@ export default function GxcLogo({
           height={size}
           className="object-cover"
           priority
+          unoptimized
         />
       </div>
 
