@@ -24,7 +24,3 @@ htmlcov/
 .ruff_cache/
 alembic/versions/
 ml_model/
-
-# Model weights are downloaded at build time from GitHub Releases (not stored in git)
-# The Dockerfile RUN commands handle the download — no local models/ needed in context
-models/

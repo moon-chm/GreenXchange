@@ -93,8 +93,8 @@ class PyTorchCVModel(CVModel):
             tree_model_path or os.getenv("TREE_MODEL_PATH"),
             [
                 "/app/models/model1/tree_detector_resnet18.pth",                              # Docker/Render (production)
-                os.path.join(os.path.dirname(__file__), "..", "..", "..", "backend", "models", "model1", "tree_detector_resnet18.pth"),  # Local dev (backend/models/)
-                os.path.join(os.path.dirname(__file__), "..", "..", "..", "ALL MODELS", "model1", "tree_detector_resnet18.pth"),         # Local dev (ALL MODELS/)
+                os.path.join(os.path.dirname(__file__), "..", "..", "..", "models", "model1", "tree_detector_resnet18.pth"),  # Local dev (backend/models/) — 3 ups from backend/app/services/cv reaches backend/
+                os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "ALL MODELS", "model1", "tree_detector_resnet18.pth"),   # Local dev (repo-root ALL MODELS/) — 4 ups reaches the repo root
                 r"E:\GreenXchange\ALL MODELS\model1\tree_detector_resnet18.pth",              # Windows absolute fallback
             ]
         )
@@ -103,8 +103,8 @@ class PyTorchCVModel(CVModel):
             health_model_path or os.getenv("PLANT_HEALTH_MODEL_PATH"),
             [
                 "/app/models/model 2/new-plant_health_resnet18_balanced.pth",                              # Docker/Render (production)
-                os.path.join(os.path.dirname(__file__), "..", "..", "..", "backend", "models", "model 2", "new-plant_health_resnet18_balanced.pth"),  # Local dev
-                os.path.join(os.path.dirname(__file__), "..", "..", "..", "ALL MODELS", "model 2", "new-plant_health_resnet18_balanced.pth"),         # Local dev (ALL MODELS/)
+                os.path.join(os.path.dirname(__file__), "..", "..", "..", "models", "model 2", "new-plant_health_resnet18_balanced.pth"),  # Local dev (backend/models/) — 3 ups from backend/app/services/cv reaches backend/
+                os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "ALL MODELS", "model 2", "new-plant_health_resnet18_balanced.pth"),   # Local dev (repo-root ALL MODELS/) — 4 ups reaches the repo root
                 r"E:\GreenXchange\ALL MODELS\model 2\new-plant_health_resnet18_balanced.pth", # Windows absolute fallback
             ]
         )
@@ -129,7 +129,10 @@ class PyTorchCVModel(CVModel):
         if self.tree_model_path and os.path.exists(self.tree_model_path):
             try:
                 model = tv_models.resnet18()
-                model.fc = nn.Linear(model.fc.in_features, 2)
+                model.fc = nn.Sequential(
+                    nn.Dropout(p=0.3),
+                    nn.Linear(model.fc.in_features, 2)
+                )
                 state_dict = torch.load(self.tree_model_path, map_location=self.device, weights_only=True)
                 model.load_state_dict(state_dict)
                 model.to(self.device)

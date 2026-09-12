@@ -45,3 +45,9 @@ backend/test_models_live.py
 
 credentials.json
 get_gmail_token.py
+
+# Local DL staging folder
+DL/
+
+# Large model artifacts (>100MB GitHub limit)
+*.joblib
