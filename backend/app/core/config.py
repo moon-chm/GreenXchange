@@ -89,13 +89,21 @@ class Settings(BaseSettings):
         """
         if self.ALGORITHM == "RS256":
             if not self.jwt_private_key or not self.jwt_public_key:
-                raise ValueError(
-                    "ALGORITHM=RS256 is configured but JWT_PRIVATE_KEY_B64 / JWT_PUBLIC_KEY_B64 "
-                    "are missing or not valid base64-encoded PEM keys. Refusing to start rather "
-                    "than silently falling back to HS256. Generate a key pair with "
-                    "'python backend/scripts/generate_keys.py', or set ALGORITHM=HS256 for local "
-                    "development."
-                )
+                if self.SECRET_KEY and len(self.SECRET_KEY) >= 32:
+                    import logging
+                    logging.getLogger("backend").warning(
+                        "⚠️ ALGORITHM=RS256 was configured but JWT keys are missing. "
+                        "Safely falling back to HS256 with SECRET_KEY."
+                    )
+                    self.ALGORITHM = "HS256"
+                else:
+                    raise ValueError(
+                        "ALGORITHM=RS256 is configured but JWT_PRIVATE_KEY_B64 / JWT_PUBLIC_KEY_B64 "
+                        "are missing or not valid base64-encoded PEM keys. Refusing to start rather "
+                        "than silently falling back to HS256. Generate a key pair with "
+                        "'python backend/scripts/generate_keys.py', or set ALGORITHM=HS256 for local "
+                        "development."
+                    )
         elif self.ALGORITHM == "HS256":
             if not self.SECRET_KEY or len(self.SECRET_KEY) < 32:
                 raise ValueError(
