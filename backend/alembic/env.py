@@ -23,23 +23,30 @@ from app.models.base import Base
 import app.models  # Ensure all models are loaded
 target_metadata = Base.metadata
 
+import urllib.parse
+
 # Set the sqlalchemy url from our app settings
 db_url = settings.DATABASE_URL
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
+if db_url:
+    parsed = urllib.parse.urlparse(db_url)
+    query_dict = urllib.parse.parse_qs(parsed.query)
 
-if db_url.startswith("postgresql://"):
-    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-elif db_url.startswith("postgresql+psycopg2://"):
-    db_url = db_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+    for param in ["sslmode", "channel_binding"]:
+        query_dict.pop(param, None)
 
-use_ssl = False
-if "sslmode=require" in db_url:
-    db_url = db_url.replace("?sslmode=require", "").replace("&sslmode=require", "")
-    use_ssl = True
+    new_query = urllib.parse.urlencode(query_dict, doseq=True)
+    scheme = parsed.scheme
+    if scheme in ("postgres", "postgresql", "postgresql+psycopg2"):
+        scheme = "postgresql+asyncpg"
 
-if ".render.com" in db_url or "onrender.com" in db_url:
-    use_ssl = True
+    db_url = urllib.parse.urlunparse((
+        scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        new_query,
+        parsed.fragment
+    ))
 
 config.set_main_option("sqlalchemy.url", db_url)
 

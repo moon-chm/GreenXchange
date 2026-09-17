@@ -26,9 +26,7 @@ services:
     dockerContext: ./backend
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: greenxchange-db
-          property: connectionString
+        sync: false                    # Set in Render dashboard (Neon PostgreSQL)
       - key: REDIS_URL
         fromService:
           type: redis
@@ -89,12 +87,4 @@ services:
     plan: free
     ipAllowList: []
 
-# ---------------------------------------------------------------
-# PostgreSQL Database
-# ---------------------------------------------------------------
-databases:
-  - name: greenxchange-db
-    databaseName: greenxchange
-    user: greenxchange
-    plan: free
-    ipAllowList: []
+
