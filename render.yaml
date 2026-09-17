@@ -37,15 +37,9 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
-        value: RS256                   # Fixed: was HS256, code uses RS256
+        value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: 30
-
-      # ── JWT RS256 Keys (set manually in Render dashboard) ─────
-      - key: JWT_PRIVATE_KEY_B64
-        sync: false
-      - key: JWT_PUBLIC_KEY_B64
-        sync: false
 
       # ── Email (Gmail API OAuth2 — works on Render free tier via HTTPS/443) ──
       - key: EMAIL_PROVIDER
