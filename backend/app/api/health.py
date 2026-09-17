@@ -18,8 +18,14 @@ async def health_check():
             await conn.execute(text("SELECT 1"))
         status["db"] = "ok"
     except Exception as e:
-        logger.error(f"Health DB check failed: {type(e).__name__}")
+        logger.error(f"Health DB check failed: {type(e).__name__}: {e}")
         status["db"] = "down"
+        status["db_error"] = f"{type(e).__name__}: {str(e)}"
+        if settings.DATABASE_URL:
+            # show masked host only
+            status["db_target"] = settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else "configured"
+        else:
+            status["db_target"] = "not_set"
 
     # Check Redis
     try:
