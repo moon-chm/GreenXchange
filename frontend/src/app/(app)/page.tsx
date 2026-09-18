@@ -150,6 +150,9 @@ export default function Dashboard() {
           setData((prev: any) => {
             if (!prev) return prev;
             const currentEnv = prev.environment?.data || {};
+            const currentEntryId = currentEnv.hardware?.entry_id ?? 0;
+            // Only update if this is a newer ThingSpeak entry
+            if (feed.entry_id && feed.entry_id <= currentEntryId) return prev;
             return {
               ...prev,
               environment: {
@@ -164,18 +167,28 @@ export default function Dashboard() {
           });
         }
       } catch (err) {
-        console.warn("Direct ThingSpeak fallback fetch error:", err);
+        console.warn("Direct ThingSpeak fetch error:", err);
       }
     };
 
-    // 1. High-frequency hardware telemetry poller (every 2.5s)
-    const telemetryInterval = setInterval(() => {
+    // 1. Primary: direct ThingSpeak poll every 15s (ESP32 uploads every ~30s)
+    //    This always runs regardless of backend status — never blocked by stale cache
+    fetchThingSpeakDirectly(); // immediate on mount
+    const thingspeakInterval = setInterval(fetchThingSpeakDirectly, 15000);
+
+    // 2. Secondary: backend hardware endpoint every 15s
+    //    If backend has NEWER data (e.g. from MQTT push) it wins; otherwise ignored
+    const backendHardwareInterval = setInterval(() => {
       api.get("/environment/hardware")
         .then((res) => {
           if (res.data && res.data.aqi !== undefined && res.data.connected) {
             setData((prev: any) => {
               if (!prev) return prev;
               const currentEnv = prev.environment?.data || {};
+              const currentEntryId = currentEnv.hardware?.entry_id ?? 0;
+              const backendEntryId = res.data.entry_id ?? 0;
+              // Only override if backend has a newer entry
+              if (backendEntryId && backendEntryId <= currentEntryId) return prev;
               return {
                 ...prev,
                 environment: {
@@ -188,30 +201,43 @@ export default function Dashboard() {
                 }
               };
             });
-          } else {
-            fetchThingSpeakDirectly();
           }
         })
-        .catch(() => {
-          fetchThingSpeakDirectly();
-        });
-    }, 2500);
+        .catch(() => { /* silently ignore — ThingSpeak direct poll is primary */ });
+    }, 15000);
 
-    // Initial instant hardware ping
-    fetchThingSpeakDirectly();
-
-    // 2. Full dashboard periodic refresh (every 15s)
+    // 3. Full dashboard refresh every 30s (background data — plants, rewards, etc.)
     const fullDashboardInterval = setInterval(() => {
       api.get("/dashboard")
         .then((res) => {
-          setData(res.data);
+          setData((prev: any) => {
+            if (!prev) return res.data;
+            // Preserve live hardware data from ThingSpeak — don't overwrite with stale backend snapshot
+            const liveHardware = prev.environment?.data?.hardware;
+            const merged = { ...res.data };
+            if (liveHardware && merged.environment?.data) {
+              const backendAge = Math.floor(Date.now() / 1000) - (liveHardware.timestamp ?? 0);
+              if (backendAge < 120) {
+                // Keep ThingSpeak hardware data if it's fresher than 2 minutes
+                merged.environment = {
+                  ...merged.environment,
+                  data: {
+                    ...merged.environment.data,
+                    aqi: liveHardware.aqi ?? merged.environment.data.aqi,
+                    hardware: liveHardware
+                  }
+                };
+              }
+            }
+            return merged;
+          });
         })
         .catch((err) => {
           console.error("Live dashboard refresh error:", err);
         });
-    }, 15000);
+    }, 30000);
 
-    // 3. SSE real-time push stream (instantly updates when ESP32 publishes to ThingSpeak)
+    // 4. SSE real-time push stream (instantly updates when ESP32 publishes to ThingSpeak via MQTT)
     let eventSource: EventSource | null = null;
     try {
       const baseUrl = api.defaults.baseURL || "";
@@ -243,7 +269,8 @@ export default function Dashboard() {
     } catch {}
 
     return () => {
-      clearInterval(telemetryInterval);
+      clearInterval(thingspeakInterval);
+      clearInterval(backendHardwareInterval);
       clearInterval(fullDashboardInterval);
       if (eventSource) {
         eventSource.close();

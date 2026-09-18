@@ -133,7 +133,7 @@ class ThingSpeakManager:
         global _in_memory_latest_telemetry
         now = int(time.time())
 
-        # 1. Check Redis cache if fresh (< 15s)
+        # 1. Check Redis cache if fresh (< 5s) — tighter window so live data is preferred
         try:
             r = await self.get_redis()
             if r:
@@ -141,17 +141,17 @@ class ThingSpeakManager:
                 if raw:
                     data = json.loads(raw)
                     age = now - data.get("timestamp", 0)
-                    if age < 15:
+                    if age < 5:
                         data["connected"] = age <= 180
                         data["age_seconds"] = age
                         return data
         except Exception as e:
             logger.debug(f"Redis read telemetry error: {e}")
 
-        # 2. Check in-memory telemetry if fresh (< 15s)
+        # 2. Check in-memory telemetry if fresh (< 5s)
         if _in_memory_latest_telemetry:
             age = now - _in_memory_latest_telemetry.get("timestamp", 0)
-            if age < 15:
+            if age < 5:
                 data = dict(_in_memory_latest_telemetry)
                 data["connected"] = age <= 180
                 data["age_seconds"] = age
@@ -229,7 +229,7 @@ class ThingSpeakManager:
             latest_smoke = 0.70
             latest_f5 = "0"
             latest_entry_id = None
-            latest_timestamp = int(time.time())
+            latest_timestamp = 0  # Will be set from feed entry timestamps
 
             for f in feeds:
                 try:
@@ -251,6 +251,16 @@ class ThingSpeakManager:
                         latest_f5 = str(f5)
 
                     latest_entry_id = f.get("entry_id")
+                    # Parse real timestamp from feed entry
+                    created_at_str = f.get("created_at")
+                    if created_at_str:
+                        try:
+                            import datetime
+                            dt = datetime.datetime.strptime(created_at_str, "%Y-%m-%dT%H:%M:%SZ")
+                            latest_timestamp = int(dt.replace(tzinfo=datetime.timezone.utc).timestamp())
+                        except Exception:
+                            pass
+
                     history.append({
                         "entry_id": f.get("entry_id"),
                         "created_at": f.get("created_at"),
@@ -285,7 +295,7 @@ class ThingSpeakManager:
                 "buzzer_active": str(latest_f5) == "1" or latest_aqi > 140,
                 "air_quality_status": status_str,
                 "alert_level": 140,
-                "timestamp": latest_timestamp,
+                "timestamp": latest_timestamp if latest_timestamp > 0 else int(time.time()),
                 "history": history
             }
 
