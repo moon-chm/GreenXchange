@@ -112,18 +112,80 @@ export default function Dashboard() {
       fetchDashboard();
     }
 
-    // Auto-poll live hardware & environmental telemetry every 5 seconds
+    // 1. High-frequency hardware telemetry poller (every 2.5s)
     const telemetryInterval = setInterval(() => {
+      api.get("/environment/hardware")
+        .then((res) => {
+          if (res.data && res.data.aqi !== undefined) {
+            setData((prev: any) => {
+              if (!prev) return prev;
+              const currentEnv = prev.environment?.data || {};
+              return {
+                ...prev,
+                environment: {
+                  ...prev.environment,
+                  data: {
+                    ...currentEnv,
+                    aqi: res.data.aqi ?? currentEnv.aqi,
+                    hardware: res.data
+                  }
+                }
+              };
+            });
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+
+    // 2. Full dashboard periodic refresh (every 15s)
+    const fullDashboardInterval = setInterval(() => {
       api.get("/dashboard")
         .then((res) => {
           setData(res.data);
         })
         .catch((err) => {
-          console.error("Live telemetry polling failed:", err);
+          console.error("Live dashboard refresh error:", err);
         });
-    }, 5000);
+    }, 15000);
 
-    return () => clearInterval(telemetryInterval);
+    // 3. SSE real-time push stream (instantly updates when ESP32 publishes to ThingSpeak)
+    let eventSource: EventSource | null = null;
+    try {
+      const baseUrl = api.defaults.baseURL || "";
+      if (typeof window !== "undefined" && window.EventSource) {
+        eventSource = new EventSource(`${baseUrl}/environment/stream`);
+        eventSource.onmessage = (event) => {
+          try {
+            const hw = JSON.parse(event.data);
+            if (hw && hw.aqi !== undefined) {
+              setData((prev: any) => {
+                if (!prev) return prev;
+                const currentEnv = prev.environment?.data || {};
+                return {
+                  ...prev,
+                  environment: {
+                    ...prev.environment,
+                    data: {
+                      ...currentEnv,
+                      aqi: hw.aqi ?? currentEnv.aqi,
+                      hardware: hw
+                    }
+                  }
+                };
+              });
+            }
+          } catch {}
+        };
+      }
+    } catch {}
+
+    return () => {
+      clearInterval(telemetryInterval);
+      clearInterval(fullDashboardInterval);
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
   }, []);
 
   const displayName = data?.user?.full_name?.split(" ")[0] ?? user?.name ?? "Explorer";

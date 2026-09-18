@@ -1,9 +1,11 @@
+import asyncio
 import json
 import logging
 import secrets
 import time
 from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from app.api.deps import get_current_user
 from app.models.users import User
 from app.utils.geo import get_tile_id
@@ -112,6 +114,33 @@ async def get_hardware_telemetry():
 
     # Fallback to ThingSpeak manager telemetry
     return await thingspeak_manager.get_latest_telemetry()
+
+
+@router.get("/stream")
+async def stream_hardware_telemetry():
+    """Server-Sent Events (SSE) stream for zero-latency real-time ESP32 hardware telemetry."""
+    async def event_generator():
+        last_timestamp = 0
+        while True:
+            try:
+                telemetry = await thingspeak_manager.get_latest_telemetry()
+                curr_ts = telemetry.get("timestamp", 0)
+                if curr_ts != last_timestamp:
+                    last_timestamp = curr_ts
+                    yield f"data: {json.dumps(telemetry)}\n\n"
+            except Exception:
+                pass
+            await asyncio.sleep(2)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 class ThingSpeakConfigRequest(BaseModel):
