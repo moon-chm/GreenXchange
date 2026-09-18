@@ -29,3 +29,4 @@ google-auth-httplib2>=0.2.0
 google-api-python-client>=2.120.0
 torch>=2.0.0
 torchvision>=0.15.0
+paho-mqtt>=2.0.0

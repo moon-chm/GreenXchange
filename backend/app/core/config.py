@@ -58,6 +58,15 @@ class Settings(BaseSettings):
     # header). Left unset, that endpoint stays open for backward compatibility.
     HARDWARE_API_KEY: str = ""
 
+    # ThingSpeak IoT Channel & MQTT Settings
+    THINGSPEAK_CHANNEL_ID: str = "3499335"
+    THINGSPEAK_READ_API_KEY: str = ""
+    THINGSPEAK_MQTT_CLIENT_ID: str = "GgwMOC8KCyQlIzsoLhgcARw"
+    THINGSPEAK_MQTT_USERNAME: str = "GgwMOC8KCyQlIzsoLhgcARw"
+    THINGSPEAK_MQTT_PASSWORD: str = "buw0sT0NKP2HU5VOilaICd2D"
+    THINGSPEAK_MQTT_HOST: str = "mqtt3.thingspeak.com"
+    THINGSPEAK_MQTT_PORT: int = 1883
+
     @property
     def jwt_private_key(self) -> str:
         if not self.JWT_PRIVATE_KEY_B64:

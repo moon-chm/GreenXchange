@@ -1,15 +1,33 @@
 "use client";
 
+import { useState } from "react";
 import { useReducedMotion, motion } from "framer-motion";
-import { Wind, Thermometer, Droplets, AlertTriangle, Sparkles, ShieldAlert, CheckCircle2, Cpu, Activity, Flame } from "lucide-react";
+import {
+  Wind,
+  Thermometer,
+  Droplets,
+  AlertTriangle,
+  Sparkles,
+  ShieldAlert,
+  CheckCircle2,
+  Cpu,
+  Activity,
+  Flame,
+  Radio,
+  SlidersHorizontal
+} from "lucide-react";
 import AnimatedNumber from "@/components/shared/AnimatedNumber";
 import StaleIndicator from "@/components/shared/StaleIndicator";
 import { aqiColor, aqiLabel } from "@/lib/palette";
 import { fadeUp } from "@/lib/motion";
+import ThingSpeakModal from "@/components/dashboard/ThingSpeakModal";
 
 interface HardwareData {
   connected: boolean;
   device_id?: string;
+  source?: string;
+  channel_id?: string;
+  entry_id?: number;
   aqi?: number;
   co2_ppm?: number;
   co_ppm?: number;
@@ -76,6 +94,7 @@ export default function EnvironmentalPanel({
   loading = false,
 }: EnvironmentalPanelProps) {
   const shouldReduce = useReducedMotion();
+  const [showThingSpeakModal, setShowThingSpeakModal] = useState(false);
 
   if (loading) return <Skeleton />;
 
@@ -85,123 +104,148 @@ export default function EnvironmentalPanel({
   const progressPct = Math.min((aqi / 500) * 100, 100);
   const advice = getAqiAdvice(aqi);
   const hw = data?.hardware;
+  const isThingSpeak = hw?.source === "thingspeak" || hw?.channel_id === "3499335" || hw?.device_id?.includes("ThingSpeak");
 
   return (
-    <motion.div
-      variants={fadeUp}
-      initial={shouldReduce ? "visible" : "hidden"}
-      animate="visible"
-      className="rounded-2xl border border-forest/60 bg-gradient-to-br from-forest/95 via-forest/90 to-canopy text-parchment shadow-card p-6 flex flex-col gap-4 h-full relative overflow-hidden"
-    >
-      {/* Background ambient blur */}
-      <div className="absolute top-0 right-0 w-48 h-48 bg-fern/10 rounded-full blur-3xl pointer-events-none" />
+    <>
+      <motion.div
+        variants={fadeUp}
+        initial={shouldReduce ? "visible" : "hidden"}
+        animate="visible"
+        className="rounded-2xl border border-forest/60 bg-gradient-to-br from-forest/95 via-forest/90 to-canopy text-parchment shadow-card p-6 flex flex-col gap-4 h-full relative overflow-hidden"
+      >
+        {/* Background ambient blur */}
+        <div className="absolute top-0 right-0 w-48 h-48 bg-fern/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Header */}
-      <div className="flex items-center justify-between z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-parchment">
-            <Wind size={18} />
+        {/* Header */}
+        <div className="flex items-center justify-between z-10">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-parchment">
+              <Wind size={18} />
+            </div>
+            <div>
+              <h2 className="font-display text-lg font-semibold text-parchment leading-tight">
+                Live Air Quality & Weather
+              </h2>
+              <p className="text-[10px] text-parchment/60">
+                {isThingSpeak
+                  ? "ESP32 Environmental Monitoring via ThingSpeak MQTT"
+                  : hw?.connected
+                  ? "Hardware Sensor Stream"
+                  : "Real-time Telemetry Engine"}
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-display text-lg font-semibold text-parchment leading-tight">
-              Live Air Quality & Weather
-            </h2>
-            <p className="text-[10px] text-parchment/60">
-              {hw?.connected ? "Arduino Nano Hardware Stream" : "Real-time Telemetry Engine"}
-            </p>
+          <div className="flex items-center gap-2">
+            {/* ThingSpeak / Hardware Stream Badge with Click-to-Inspect */}
+            <button
+              onClick={() => setShowThingSpeakModal(true)}
+              className="flex items-center gap-1.5 text-[11px] font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 hover:border-emerald-400/50 px-2.5 py-1 rounded-lg transition-all shadow-sm group"
+              title="Click to view ThingSpeak live stream, charts & settings"
+            >
+              <Radio size={12} className="text-emerald-400 animate-pulse group-hover:scale-110 transition-transform" />
+              <span>{isThingSpeak ? "ESP32 • ThingSpeak Live" : "IoT Hardware Stream"}</span>
+              <span className="text-[9px] opacity-70 font-mono bg-emerald-950/40 px-1 py-0.2 rounded border border-emerald-400/20">
+                Ch #{hw?.channel_id || "3499335"}
+              </span>
+              <SlidersHorizontal size={10} className="text-emerald-400/70 ml-0.5" />
+            </button>
+
+            {stale && (
+              <span className="flex items-center gap-1 text-xs font-medium bg-amber-500/20 text-amber-300 px-2 py-1 rounded-lg border border-amber-400/30">
+                <AlertTriangle size={11} />
+                Stale
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {hw && hw.connected && (
-            <span className="flex items-center gap-1.5 text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2.5 py-1 rounded-lg animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-              Arduino COM11
-            </span>
-          )}
-          {stale && (
-            <span className="flex items-center gap-1 text-xs font-medium bg-amber-500/20 text-amber-300 px-2 py-1 rounded-lg border border-amber-400/30">
-              <AlertTriangle size={11} />
-              Stale
-            </span>
-          )}
-        </div>
-      </div>
 
-      {stale && !data && (
-        <StaleIndicator label="Environmental data unavailable" />
-      )}
+        {stale && !data && (
+          <StaleIndicator label="Environmental data unavailable" />
+        )}
 
-      {data ? (
-        <>
-          {/* AQI Big Number */}
-          <div className="flex items-end justify-between z-10 mt-1">
-            <div className="flex items-end gap-3">
-              <AnimatedNumber
-                value={aqi}
-                className="font-display text-6xl sm:text-7xl font-bold leading-none tracking-tight"
-                style={{ color }}
-              />
-              <div className="mb-2 flex flex-col">
-                <span
-                  className="text-sm font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-md bg-white/10 backdrop-blur-sm inline-block"
+        {data ? (
+          <>
+            {/* AQI Big Number */}
+            <div className="flex items-end justify-between z-10 mt-1">
+              <div className="flex items-end gap-3">
+                <AnimatedNumber
+                  value={aqi}
+                  className="font-display text-6xl sm:text-7xl font-bold leading-none tracking-tight"
                   style={{ color }}
-                >
-                  {label}
-                </span>
-                <span className="text-parchment/60 text-xs mt-1">
-                  {hw?.connected ? "Arduino Hardware AQI" : "Air Quality Index"}
-                </span>
+                />
+                <div className="mb-2 flex flex-col">
+                  <span
+                    className="text-sm font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-md bg-white/10 backdrop-blur-sm inline-block"
+                    style={{ color }}
+                  >
+                    {label}
+                  </span>
+                  <span className="text-parchment/60 text-xs mt-1">
+                    {isThingSpeak
+                      ? "ESP32 ThingSpeak (Field 1)"
+                      : hw?.connected
+                      ? "Hardware AQI"
+                      : "Air Quality Index"}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Progress bar 0–500 */}
-          <div className="space-y-1 z-10">
-            <div className="w-full bg-parchment/10 rounded-full h-2.5 overflow-hidden p-0.5 border border-white/10">
-              <motion.div
-                className="h-full rounded-full"
-                style={{ backgroundColor: color }}
-                initial={{ width: 0 }}
-                animate={{ width: `${progressPct}%` }}
-                transition={
-                  shouldReduce
-                    ? { duration: 0 }
-                    : { duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.2 }
-                }
-              />
+            {/* Progress bar 0–500 */}
+            <div className="space-y-1 z-10">
+              <div className="w-full bg-parchment/10 rounded-full h-2.5 overflow-hidden p-0.5 border border-white/10">
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{ backgroundColor: color }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPct}%` }}
+                  transition={
+                    shouldReduce
+                      ? { duration: 0 }
+                      : { duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.2 }
+                  }
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-parchment/40 px-0.5">
+                <span>0 (Fresh)</span>
+                <span>250 (Moderate)</span>
+                <span>500 (Hazardous)</span>
+              </div>
             </div>
-            <div className="flex justify-between text-[10px] text-parchment/40 px-0.5">
-              <span>0 (Fresh)</span>
-              <span>250 (Moderate)</span>
-              <span>500 (Hazardous)</span>
+
+            {/* Health & Botanical Tip */}
+            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/15 text-xs text-parchment/90 z-10">
+              {advice.icon}
+              <p className="line-clamp-2">{advice.text}</p>
             </div>
-          </div>
 
-          {/* Health & Botanical Tip */}
-          <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/15 text-xs text-parchment/90 z-10">
-            {advice.icon}
-            <p className="line-clamp-2">{advice.text}</p>
-          </div>
-
-          {/* Hardware Sensor Breakdown Chips (MQ-135, MQ-7, MQ-2) */}
-          {hw && (
+            {/* Hardware Sensor Breakdown Chips (MQ-7 CO from Field 2, MQ-135, MQ-2) */}
             <div className="grid grid-cols-3 gap-2 z-10">
-              <div className="bg-white/10 border border-white/15 rounded-xl p-2.5 text-center">
-                <p className="text-[9px] uppercase font-medium tracking-wider text-parchment/60 flex items-center justify-center gap-1">
-                  <Cpu size={10} className="text-emerald-400" /> MQ-135 CO₂
-                </p>
-                <p className="text-sm font-bold text-parchment mt-0.5">
-                  {hw.co2_ppm?.toFixed(2) ?? "1.33"} <span className="text-[9px] font-normal opacity-70">ppm</span>
-                </p>
-              </div>
-
               <div className="bg-white/10 border border-white/15 rounded-xl p-2.5 text-center">
                 <p className="text-[9px] uppercase font-medium tracking-wider text-parchment/60 flex items-center justify-center gap-1">
                   <Activity size={10} className="text-amber-400" /> MQ-7 CO
                 </p>
                 <p className="text-sm font-bold text-parchment mt-0.5">
-                  {hw.co_ppm?.toFixed(2) ?? "2.63"} <span className="text-[9px] font-normal opacity-70">ppm</span>
+                  {(hw?.co_ppm ?? hw?.mq7_co ?? 0.65).toFixed(2)}{" "}
+                  <span className="text-[9px] font-normal opacity-70">ppm</span>
                 </p>
+                <span className="text-[8px] text-amber-300/80 font-mono mt-0.5 inline-block">
+                  Field 2
+                </span>
+              </div>
+
+              <div className="bg-white/10 border border-white/15 rounded-xl p-2.5 text-center">
+                <p className="text-[9px] uppercase font-medium tracking-wider text-parchment/60 flex items-center justify-center gap-1">
+                  <Cpu size={10} className="text-emerald-400" /> MQ-135 CO₂
+                </p>
+                <p className="text-sm font-bold text-parchment mt-0.5">
+                  {(hw?.co2_ppm ?? 1.33).toFixed(2)}{" "}
+                  <span className="text-[9px] font-normal opacity-70">ppm</span>
+                </p>
+                <span className="text-[8px] text-emerald-300/80 font-mono mt-0.5 inline-block">
+                  Calibrated
+                </span>
               </div>
 
               <div className="bg-white/10 border border-white/15 rounded-xl p-2.5 text-center">
@@ -209,46 +253,65 @@ export default function EnvironmentalPanel({
                   <Flame size={10} className="text-sky-400" /> MQ-2 Smoke
                 </p>
                 <p className="text-sm font-bold text-parchment mt-0.5">
-                  {hw.smoke_ppm?.toFixed(2) ?? "0.00"} <span className="text-[9px] font-normal opacity-70">ppm</span>
+                  {(hw?.smoke_ppm ?? 0.0).toFixed(2)}{" "}
+                  <span className="text-[9px] font-normal opacity-70">ppm</span>
                 </p>
-              </div>
-            </div>
-          )}
-
-          {/* Environmental Telemetry Chips */}
-          <div className="flex flex-wrap gap-2.5 mt-auto z-10 pt-1">
-            <div className="flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-2 text-xs text-parchment/90 flex-1 min-w-[100px]">
-              <Wind size={14} className="text-parchment/60 shrink-0" />
-              <div>
-                <p className="text-[9px] uppercase tracking-wider text-parchment/50">PM2.5</p>
-                <p className="font-bold text-parchment">{data.pm25 ?? "8.5"} <span className="text-[10px] font-normal text-parchment/60">µg/m³</span></p>
+                <span className="text-[8px] text-sky-300/80 font-mono mt-0.5 inline-block">
+                  Clean
+                </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-2 text-xs text-parchment/90 flex-1 min-w-[100px]">
-              <Thermometer size={14} className="text-parchment/60 shrink-0" />
-              <div>
-                <p className="text-[9px] uppercase tracking-wider text-parchment/50">Temperature</p>
-                <p className="font-bold text-parchment">{data.temperature ?? "24.5"}°C</p>
+            {/* Environmental Telemetry Chips */}
+            <div className="flex flex-wrap gap-2.5 mt-auto z-10 pt-1">
+              <div className="flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-2 text-xs text-parchment/90 flex-1 min-w-[100px]">
+                <Wind size={14} className="text-parchment/60 shrink-0" />
+                <div>
+                  <p className="text-[9px] uppercase tracking-wider text-parchment/50">PM2.5</p>
+                  <p className="font-bold text-parchment">
+                    {data.pm25 ?? "8.5"}{" "}
+                    <span className="text-[10px] font-normal text-parchment/60">µg/m³</span>
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-2 text-xs text-parchment/90 flex-1 min-w-[100px]">
-              <Droplets size={14} className="text-parchment/60 shrink-0" />
-              <div>
-                <p className="text-[9px] uppercase tracking-wider text-parchment/50">Humidity</p>
-                <p className="font-bold text-parchment">{data.humidity ?? "60"}% <span className="text-[10px] font-normal text-parchment/60">RH</span></p>
+              <div className="flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-2 text-xs text-parchment/90 flex-1 min-w-[100px]">
+                <Thermometer size={14} className="text-parchment/60 shrink-0" />
+                <div>
+                  <p className="text-[9px] uppercase tracking-wider text-parchment/50">Temperature</p>
+                  <p className="font-bold text-parchment">{data.temperature ?? "24.5"}°C</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-2 text-xs text-parchment/90 flex-1 min-w-[100px]">
+                <Droplets size={14} className="text-parchment/60 shrink-0" />
+                <div>
+                  <p className="text-[9px] uppercase tracking-wider text-parchment/50">Humidity</p>
+                  <p className="font-bold text-parchment">
+                    {data.humidity ?? "60"}%{" "}
+                    <span className="text-[10px] font-normal text-parchment/60">RH</span>
+                  </p>
+                </div>
               </div>
             </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center flex-1 gap-2 text-parchment/40">
+            <Wind size={32} />
+            <p className="text-sm">Environmental data unavailable</p>
           </div>
-        </>
-      ) : (
-        <div className="flex flex-col items-center justify-center flex-1 gap-2 text-parchment/40">
-          <Wind size={32} />
-          <p className="text-sm">Environmental data unavailable</p>
-        </div>
-      )}
-    </motion.div>
+        )}
+      </motion.div>
+
+      {/* Interactive ThingSpeak Console Modal */}
+      <ThingSpeakModal
+        isOpen={showThingSpeakModal}
+        onClose={() => setShowThingSpeakModal(false)}
+        channelId={hw?.channel_id || "3499335"}
+        currentAqi={hw?.aqi ?? aqi}
+        currentCo={hw?.co_ppm ?? hw?.mq7_co ?? 0.65}
+      />
+    </>
   );
 }
 

@@ -64,7 +64,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ CV model pre-warm notice: {e}")
 
+    # Initiate ThingSpeak IoT MQTT listener for ESP32 air quality hardware
+    try:
+        from app.services.thingspeak import thingspeak_manager
+        thingspeak_manager.start_mqtt_listener()
+        logger.info("✅ ThingSpeak MQTT hardware listener started.")
+    except Exception as e:
+        logger.warning(f"⚠️ ThingSpeak MQTT listener notice: {e}")
+
     yield
+
+    # Clean shutdown for ThingSpeak MQTT
+    try:
+        from app.services.thingspeak import thingspeak_manager
+        thingspeak_manager.stop_mqtt_listener()
+    except Exception:
+        pass
 
 async def _seed_default_species():
     """Ensure at least the default plant species exist in the database."""

@@ -49,15 +49,20 @@ async def fetch_environment(lat, lng):
                 import json, time
                 hw_data = json.loads(hw_raw)
                 age = int(time.time()) - hw_data.get("timestamp", 0)
-                if age <= 300:
+                if age <= 600:
+                    co_val = hw_data.get("co_ppm", hw_data.get("mq7_co", 0.65))
                     hardware_dict = {
-                        "connected": age <= 120,
-                        "device_id": hw_data.get("device_id", "Arduino Nano"),
-                        "aqi": hw_data.get("aqi", 30),
+                        "connected": age <= 180,
+                        "device_id": hw_data.get("device_id", "ESP32 ThingSpeak (Ch #3499335)"),
+                        "source": hw_data.get("source", "thingspeak"),
+                        "channel_id": hw_data.get("channel_id", "3499335"),
+                        "entry_id": hw_data.get("entry_id"),
+                        "aqi": hw_data.get("aqi", 35),
                         "co2_ppm": hw_data.get("mq135_co2", 1.33),
-                        "co_ppm": hw_data.get("mq7_co", 2.63),
+                        "co_ppm": co_val,
+                        "mq7_co": co_val,
                         "smoke_ppm": hw_data.get("mq2_smoke", 0.00),
-                        "co_aqi": hw_data.get("co_aqi", 30),
+                        "co_aqi": hw_data.get("co_aqi", hw_data.get("aqi", 35)),
                         "smoke_aqi": hw_data.get("smoke_aqi", 0),
                         "air_quality_status": hw_data.get("air_quality_status", "GOOD"),
                         "alert_level": hw_data.get("alert_level", 140),
@@ -66,6 +71,13 @@ async def fetch_environment(lat, lng):
                     }
         except Exception as e:
             logger.warning(f"Redis hardware lookup failed ({e})")
+
+    if not hardware_dict:
+        try:
+            from app.services.thingspeak import thingspeak_manager
+            hardware_dict = await thingspeak_manager.get_latest_telemetry()
+        except Exception as e:
+            logger.debug(f"ThingSpeak manager lookup failed: {e}")
 
     base_env = None
     if redis_client:
@@ -104,8 +116,8 @@ async def fetch_environment(lat, lng):
             "humidity": weather.get("humidity", 60)
         }
 
-    # Override AQI if hardware telemetry is actively connected
-    if hardware_dict and hardware_dict.get("connected"):
+    # Override AQI if hardware telemetry is actively connected or from ThingSpeak
+    if hardware_dict and (hardware_dict.get("connected") or hardware_dict.get("source") == "thingspeak"):
         base_env["aqi"] = hardware_dict["aqi"]
 
     base_env["hardware"] = hardware_dict
