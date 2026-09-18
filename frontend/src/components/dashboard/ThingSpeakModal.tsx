@@ -69,10 +69,29 @@ export default function ThingSpeakModal({
     setStatusMsg(null);
     try {
       const k = keyToUse !== undefined ? keyToUse : apiKey;
-      const res = await api.get(`/environment/thingspeak?channel_id=${channelId}${k ? `&api_key=${k}` : ""}`);
-      const payload = res.data;
+      let payload: any = null;
+      try {
+        const res = await api.get(`/environment/thingspeak?channel_id=${channelId}${k ? `&api_key=${k}` : ""}`);
+        payload = res.data;
+      } catch (backendErr) {
+        // Resilient client-side fallback: fetch directly from ThingSpeak REST API
+        const tsRes = await fetch(`https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${k}&results=20`);
+        if (tsRes.ok) {
+          const raw = await tsRes.json();
+          payload = {
+            history: (raw.feeds || []).map((f: any) => ({
+              entry_id: f.entry_id,
+              created_at: f.created_at,
+              aqi: parseFloat(f.field1) || currentAqi,
+              co_ppm: parseFloat(f.field2) || currentCo,
+              methane_ppm: parseFloat(f.field3) || currentMethane,
+              lpg_ppm: parseFloat(f.field4) || currentLpg,
+            }))
+          };
+        }
+      }
 
-      if (payload.history && payload.history.length > 0) {
+      if (payload && payload.history && payload.history.length > 0) {
         const formatted = payload.history.map((item: any, idx: number) => {
           let timeLabel = `Point ${idx + 1}`;
           if (item.created_at) {

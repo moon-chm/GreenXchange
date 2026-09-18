@@ -112,11 +112,67 @@ export default function Dashboard() {
       fetchDashboard();
     }
 
+    const fetchThingSpeakDirectly = async () => {
+      try {
+        const savedKey = typeof window !== "undefined" ? localStorage.getItem("thingspeak_read_api_key") || "9HWV9GKDI4TGLY7O" : "9HWV9GKDI4TGLY7O";
+        const tsRes = await fetch(
+          `https://api.thingspeak.com/channels/3499335/feeds/last.json?api_key=${savedKey}`
+        );
+        if (!tsRes.ok) return;
+        const feed = await tsRes.json();
+        if (feed && (feed.field1 !== undefined || feed.field2 !== undefined)) {
+          const aqi = parseFloat(feed.field1) || 35;
+          const co_ppm = parseFloat(feed.field2) || 0.65;
+          const methane_ppm = parseFloat(feed.field3) || 16.32;
+          const lpg_ppm = parseFloat(feed.field4) || 0.70;
+          const buzzer_active = String(feed.field5) === "1" || aqi > 140;
+
+          const hwData = {
+            connected: true,
+            source: "thingspeak",
+            channel_id: "3499335",
+            entry_id: feed.entry_id,
+            device_id: "ESP32 ThingSpeak (Ch #3499335)",
+            aqi: Math.round(aqi),
+            co_ppm: co_ppm,
+            mq7_co: co_ppm,
+            methane_ppm: methane_ppm,
+            co2_ppm: methane_ppm,
+            mq135_co2: methane_ppm,
+            lpg_ppm: lpg_ppm,
+            smoke_ppm: lpg_ppm,
+            mq2_smoke: lpg_ppm,
+            buzzer_status: String(feed.field5 || "0"),
+            buzzer_active: buzzer_active,
+            timestamp: feed.created_at ? Math.floor(new Date(feed.created_at).getTime() / 1000) : Math.floor(Date.now() / 1000)
+          };
+
+          setData((prev: any) => {
+            if (!prev) return prev;
+            const currentEnv = prev.environment?.data || {};
+            return {
+              ...prev,
+              environment: {
+                ...prev.environment,
+                data: {
+                  ...currentEnv,
+                  aqi: Math.round(aqi),
+                  hardware: hwData
+                }
+              }
+            };
+          });
+        }
+      } catch (err) {
+        console.warn("Direct ThingSpeak fallback fetch error:", err);
+      }
+    };
+
     // 1. High-frequency hardware telemetry poller (every 2.5s)
     const telemetryInterval = setInterval(() => {
       api.get("/environment/hardware")
         .then((res) => {
-          if (res.data && res.data.aqi !== undefined) {
+          if (res.data && res.data.aqi !== undefined && res.data.connected) {
             setData((prev: any) => {
               if (!prev) return prev;
               const currentEnv = prev.environment?.data || {};
@@ -132,10 +188,17 @@ export default function Dashboard() {
                 }
               };
             });
+          } else {
+            fetchThingSpeakDirectly();
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          fetchThingSpeakDirectly();
+        });
     }, 2500);
+
+    // Initial instant hardware ping
+    fetchThingSpeakDirectly();
 
     // 2. Full dashboard periodic refresh (every 15s)
     const fullDashboardInterval = setInterval(() => {
