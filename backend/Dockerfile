@@ -51,4 +51,4 @@ RUN test -f /app/models/model1/tree_detector_resnet18.pth && \
     test -f "/app/models/model 2/new-plant_health_resnet18_balanced.pth" && \
     echo "AI model weights present: $(du -sh /app/models/model1/*.pth "/app/models/model 2/"*.pth | cut -f1 | tr '\n' ' ')"
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "alembic upgrade head || true; uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
