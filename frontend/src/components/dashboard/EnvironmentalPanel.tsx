@@ -32,6 +32,12 @@ interface HardwareData {
   co2_ppm?: number;
   co_ppm?: number;
   smoke_ppm?: number;
+  methane_ppm?: number;
+  lpg_ppm?: number;
+  mq7_co?: number;
+  mq135_co2?: number;
+  mq2_smoke?: number;
+  buzzer_status?: string;
   co_aqi?: number;
   smoke_aqi?: number;
   air_quality_status?: string;
@@ -220,7 +226,7 @@ export default function EnvironmentalPanel({
               <p className="line-clamp-2">{advice.text}</p>
             </div>
 
-            {/* Hardware Sensor Breakdown Chips (MQ-7 CO from Field 2, MQ-135, MQ-2) */}
+            {/* Hardware Sensor Breakdown Chips (Field 2 CO, Field 3 Methane, Field 4 LPG/Smoke) */}
             <div className="grid grid-cols-3 gap-2 z-10">
               <div className="bg-white/10 border border-white/15 rounded-xl p-2.5 text-center">
                 <p className="text-[9px] uppercase font-medium tracking-wider text-parchment/60 flex items-center justify-center gap-1">
@@ -237,14 +243,14 @@ export default function EnvironmentalPanel({
 
               <div className="bg-white/10 border border-white/15 rounded-xl p-2.5 text-center">
                 <p className="text-[9px] uppercase font-medium tracking-wider text-parchment/60 flex items-center justify-center gap-1">
-                  <Cpu size={10} className="text-emerald-400" /> MQ-135 CO₂
+                  <Cpu size={10} className="text-emerald-400" /> MQ-4 CH₄
                 </p>
                 <p className="text-sm font-bold text-parchment mt-0.5">
-                  {(hw?.co2_ppm ?? 1.33).toFixed(2)}{" "}
+                  {(hw?.methane_ppm ?? hw?.co2_ppm ?? 16.32).toFixed(2)}{" "}
                   <span className="text-[9px] font-normal opacity-70">ppm</span>
                 </p>
                 <span className="text-[8px] text-emerald-300/80 font-mono mt-0.5 inline-block">
-                  Calibrated
+                  Field 3
                 </span>
               </div>
 
@@ -253,11 +259,11 @@ export default function EnvironmentalPanel({
                   <Flame size={10} className="text-sky-400" /> MQ-2 Smoke
                 </p>
                 <p className="text-sm font-bold text-parchment mt-0.5">
-                  {(hw?.smoke_ppm ?? 0.0).toFixed(2)}{" "}
+                  {(hw?.lpg_ppm ?? hw?.smoke_ppm ?? 0.70).toFixed(2)}{" "}
                   <span className="text-[9px] font-normal opacity-70">ppm</span>
                 </p>
                 <span className="text-[8px] text-sky-300/80 font-mono mt-0.5 inline-block">
-                  Clean
+                  Field 4 (LPG)
                 </span>
               </div>
             </div>
@@ -310,6 +316,9 @@ export default function EnvironmentalPanel({
         channelId={hw?.channel_id || "3499335"}
         currentAqi={hw?.aqi ?? aqi}
         currentCo={hw?.co_ppm ?? hw?.mq7_co ?? 0.65}
+        currentMethane={hw?.methane_ppm ?? hw?.co2_ppm ?? 16.32}
+        currentLpg={hw?.lpg_ppm ?? hw?.smoke_ppm ?? 0.70}
+        buzzerActive={hw?.buzzer_active}
       />
     </>
   );

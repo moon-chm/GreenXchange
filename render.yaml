@@ -76,6 +76,8 @@ services:
       # ── ThingSpeak IoT Hardware Stream ─────────────────────────
       - key: THINGSPEAK_CHANNEL_ID
         value: "3499335"
+      - key: THINGSPEAK_READ_API_KEY
+        value: "9HWV9GKDI4TGLY7O"
       - key: THINGSPEAK_MQTT_CLIENT_ID
         value: "GgwMOC8KCyQlIzsoLhgcARw"
       - key: THINGSPEAK_MQTT_USERNAME

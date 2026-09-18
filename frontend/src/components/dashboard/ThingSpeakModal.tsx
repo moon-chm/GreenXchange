@@ -11,7 +11,9 @@ import {
   Activity,
   KeyRound,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Flame,
+  Bell
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -30,6 +32,9 @@ interface ThingSpeakModalProps {
   channelId?: string;
   currentAqi?: number;
   currentCo?: number;
+  currentMethane?: number;
+  currentLpg?: number;
+  buzzerActive?: boolean;
 }
 
 export default function ThingSpeakModal({
@@ -38,19 +43,22 @@ export default function ThingSpeakModal({
   channelId = "3499335",
   currentAqi = 35,
   currentCo = 0.65,
+  currentMethane = 16.32,
+  currentLpg = 0.70,
+  buzzerActive = false,
 }: ThingSpeakModalProps) {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState("9HWV9GKDI4TGLY7O");
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [historyData, setHistoryData] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<"aqi" | "co">("aqi");
+  const [activeTab, setActiveTab] = useState<"aqi" | "co" | "methane" | "lpg">("aqi");
 
   useEffect(() => {
     if (!isOpen) return;
 
-    // Load saved API key from localStorage
-    const savedKey = localStorage.getItem("thingspeak_read_api_key") || "";
+    // Load saved API key from localStorage or fallback to default
+    const savedKey = localStorage.getItem("thingspeak_read_api_key") || "9HWV9GKDI4TGLY7O";
     setApiKey(savedKey);
 
     loadThingSpeakStream(savedKey);
@@ -69,21 +77,25 @@ export default function ThingSpeakModal({
           let timeLabel = `Point ${idx + 1}`;
           if (item.created_at) {
             const d = new Date(item.created_at);
-            timeLabel = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+            timeLabel = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`;
           }
           return {
             time: timeLabel,
             aqi: Number(item.aqi ?? currentAqi),
             co: Number(item.co_ppm ?? currentCo),
+            methane: Number(item.methane_ppm ?? item.co2_ppm ?? currentMethane),
+            lpg: Number(item.lpg_ppm ?? item.smoke_ppm ?? currentLpg),
           };
         });
         setHistoryData(formatted);
       } else {
         // Generate current baseline history for visualization
         const synthetic = Array.from({ length: 8 }, (_, i) => ({
-          time: `19:${(10 + i * 2).toString().padStart(2, "0")}`,
-          aqi: currentAqi + (i % 2 === 0 ? 0 : 1),
+          time: `15:${(20 + i * 1).toString().padStart(2, "0")}:00`,
+          aqi: currentAqi,
           co: currentCo,
+          methane: currentMethane,
+          lpg: currentLpg,
         }));
         setHistoryData(synthetic);
       }
@@ -91,11 +103,11 @@ export default function ThingSpeakModal({
       console.warn("Could not fetch ThingSpeak history stream:", err);
       // Fallback points so chart always renders
       setHistoryData([
-        { time: "19:16", aqi: currentAqi, co: currentCo },
-        { time: "19:17", aqi: currentAqi, co: currentCo },
-        { time: "19:18", aqi: currentAqi, co: currentCo },
-        { time: "19:19", aqi: currentAqi, co: currentCo },
-        { time: "19:20", aqi: currentAqi, co: currentCo },
+        { time: "15:27:03", aqi: currentAqi, co: currentCo, methane: currentMethane, lpg: 1.08 },
+        { time: "15:27:23", aqi: currentAqi, co: currentCo, methane: currentMethane, lpg: 0.58 },
+        { time: "15:27:43", aqi: currentAqi, co: currentCo, methane: currentMethane, lpg: 0.97 },
+        { time: "15:28:03", aqi: currentAqi, co: currentCo, methane: currentMethane, lpg: 0.80 },
+        { time: "15:28:23", aqi: currentAqi, co: currentCo, methane: currentMethane, lpg: 0.70 },
       ]);
     } finally {
       setLoading(false);
@@ -112,7 +124,7 @@ export default function ThingSpeakModal({
         read_api_key: apiKey.trim() || null,
       });
       await loadThingSpeakStream(apiKey.trim());
-      setStatusMsg({ type: "success", text: "Successfully synced with ThingSpeak!" });
+      setStatusMsg({ type: "success", text: "Successfully synced with ThingSpeak Channel!" });
     } catch (err: any) {
       setStatusMsg({
         type: "error",
@@ -145,11 +157,11 @@ export default function ThingSpeakModal({
                 </h3>
                 <span className="text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  Live MQTT
+                  Live Telemetry
                 </span>
               </div>
               <p className="text-xs text-parchment/70">
-                Channel ID: <span className="font-mono text-emerald-300 font-semibold">{channelId}</span> • ESP32 Gas Telemetry
+                Channel ID: <span className="font-mono text-emerald-300 font-semibold">{channelId}</span> • ESP32 Multi-Gas Telemetry
               </p>
             </div>
           </div>
@@ -162,82 +174,135 @@ export default function ThingSpeakModal({
         </div>
 
         {/* Real-time Metric Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 z-10">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 z-10">
           {/* Field 1: AQI */}
-          <div className="bg-white/10 border border-white/15 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[11px] text-parchment/70 uppercase font-medium">
+          <div className="bg-white/10 border border-white/15 rounded-xl p-3 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-[10px] text-parchment/70 uppercase font-medium">
               <span>Field 1 • AQI</span>
-              <Cpu size={14} className="text-emerald-400" />
+              <Cpu size={13} className="text-emerald-400" />
             </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="font-display text-3xl font-extrabold text-emerald-300">
+            <div className="mt-1.5 flex items-baseline gap-1.5">
+              <span className="font-display text-2xl font-extrabold text-emerald-300">
                 {currentAqi}
               </span>
-              <span className="text-[10px] font-semibold uppercase bg-emerald-400/20 text-emerald-300 px-1.5 py-0.5 rounded">
-                Good (CPCB)
+              <span className="text-[9px] font-semibold uppercase bg-emerald-400/20 text-emerald-300 px-1 py-0.2 rounded">
+                CPCB
               </span>
             </div>
-            <p className="text-[10px] text-parchment/50 mt-1">Calculated on ESP32</p>
+            <p className="text-[9px] text-parchment/50 mt-1">Calculated on ESP32</p>
           </div>
 
           {/* Field 2: CO PPM */}
-          <div className="bg-white/10 border border-white/15 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[11px] text-parchment/70 uppercase font-medium">
-              <span>Field 2 • CO PPM</span>
-              <Activity size={14} className="text-amber-400" />
+          <div className="bg-white/10 border border-white/15 rounded-xl p-3 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-[10px] text-parchment/70 uppercase font-medium">
+              <span>Field 2 • CO</span>
+              <Activity size={13} className="text-amber-400" />
             </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="font-display text-3xl font-extrabold text-amber-300">
+            <div className="mt-1.5 flex items-baseline gap-1">
+              <span className="font-display text-2xl font-extrabold text-amber-300">
                 {currentCo.toFixed(2)}
               </span>
-              <span className="text-xs text-parchment/60 font-normal">ppm</span>
+              <span className="text-[10px] text-parchment/60 font-normal">ppm</span>
             </div>
-            <p className="text-[10px] text-parchment/50 mt-1">MQ-7 Carbon Monoxide</p>
+            <p className="text-[9px] text-parchment/50 mt-1">MQ-7 Carbon Monoxide</p>
           </div>
 
-          {/* Hardware Connection Protocol */}
-          <div className="col-span-2 sm:col-span-1 bg-white/10 border border-white/15 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[11px] text-parchment/70 uppercase font-medium">
-              <span>Broker Sync</span>
-              <ShieldCheck size={14} className="text-sky-400" />
+          {/* Field 3: Methane PPM */}
+          <div className="bg-white/10 border border-white/15 rounded-xl p-3 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-[10px] text-parchment/70 uppercase font-medium">
+              <span>Field 3 • CH₄</span>
+              <Cpu size={13} className="text-cyan-400" />
             </div>
-            <div className="mt-2">
-              <p className="text-xs font-mono text-emerald-300 truncate">mqtt3.thingspeak.com</p>
-              <p className="text-[11px] text-parchment/70 font-semibold mt-0.5">Port 1883 • QoS 0</p>
+            <div className="mt-1.5 flex items-baseline gap-1">
+              <span className="font-display text-2xl font-extrabold text-cyan-300">
+                {currentMethane.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-parchment/60 font-normal">ppm</span>
             </div>
-            <p className="text-[10px] text-parchment/50 mt-1">Subscribed to Channel</p>
+            <p className="text-[9px] text-parchment/50 mt-1">MQ-4 Methane Gas</p>
+          </div>
+
+          {/* Field 4: LPG / Smoke PPM */}
+          <div className="bg-white/10 border border-white/15 rounded-xl p-3 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-[10px] text-parchment/70 uppercase font-medium">
+              <span>Field 4 • LPG</span>
+              <Flame size={13} className="text-orange-400" />
+            </div>
+            <div className="mt-1.5 flex items-baseline gap-1">
+              <span className="font-display text-2xl font-extrabold text-orange-300">
+                {currentLpg.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-parchment/60 font-normal">ppm</span>
+            </div>
+            <p className="text-[9px] text-parchment/50 mt-1">MQ-2 Combustible / Smoke</p>
+          </div>
+        </div>
+
+        {/* Status Indicator Bar */}
+        <div className="flex items-center justify-between bg-white/5 border border-white/10 rounded-xl px-3.5 py-2 text-xs z-10">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={14} className="text-emerald-400" />
+            <span className="text-parchment/80">
+              ThingSpeak Channel <strong>#{channelId}</strong> • 20s Telemetry Cadence
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Bell size={12} className={buzzerActive ? "text-red-400 animate-bounce" : "text-emerald-400"} />
+            <span className="text-[11px] font-mono font-semibold">
+              Buzzer: {buzzerActive ? "ACTIVE (Field 5=1)" : "Normal (0)"}
+            </span>
           </div>
         </div>
 
         {/* Historical Chart Section */}
         <div className="bg-black/20 border border-white/10 rounded-xl p-4 z-10 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1">
               <button
                 onClick={() => setActiveTab("aqi")}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                   activeTab === "aqi"
                     ? "bg-emerald-500/30 text-emerald-300 border border-emerald-400/40 shadow-sm"
                     : "text-parchment/60 hover:text-parchment hover:bg-white/5"
                 }`}
               >
-                AQI Trend (Field 1)
+                AQI (Field 1)
               </button>
               <button
                 onClick={() => setActiveTab("co")}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                   activeTab === "co"
                     ? "bg-amber-500/30 text-amber-300 border border-amber-400/40 shadow-sm"
                     : "text-parchment/60 hover:text-parchment hover:bg-white/5"
                 }`}
               >
-                CO (ppm) Trend (Field 2)
+                CO (Field 2)
+              </button>
+              <button
+                onClick={() => setActiveTab("methane")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === "methane"
+                    ? "bg-cyan-500/30 text-cyan-300 border border-cyan-400/40 shadow-sm"
+                    : "text-parchment/60 hover:text-parchment hover:bg-white/5"
+                }`}
+              >
+                Methane (Field 3)
+              </button>
+              <button
+                onClick={() => setActiveTab("lpg")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === "lpg"
+                    ? "bg-orange-500/30 text-orange-300 border border-orange-400/40 shadow-sm"
+                    : "text-parchment/60 hover:text-parchment hover:bg-white/5"
+                }`}
+              >
+                LPG / Smoke (Field 4)
               </button>
             </div>
             <button
               onClick={() => loadThingSpeakStream()}
               disabled={loading}
-              className="text-xs text-parchment/60 hover:text-parchment flex items-center gap-1 bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 transition-colors"
+              className="text-xs text-parchment/60 hover:text-parchment flex items-center gap-1 bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 transition-colors shrink-0"
             >
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
               Refresh
@@ -256,10 +321,18 @@ export default function ThingSpeakModal({
                     <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0} />
                   </linearGradient>
+                  <linearGradient id="colorMethane" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+                  </linearGradient>
+                  <linearGradient id="colorLpg" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#f97316" stopOpacity={0.0} />
+                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
                 <XAxis dataKey="time" stroke="#ffffff40" fontSize={10} tickLine={false} />
-                <YAxis stroke="#ffffff40" fontSize={10} tickLine={false} domain={activeTab === "aqi" ? [0, "auto"] : [0, "auto"]} />
+                <YAxis stroke="#ffffff40" fontSize={10} tickLine={false} domain={[0, "auto"]} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: "#16271c",
@@ -269,7 +342,7 @@ export default function ThingSpeakModal({
                     fontSize: "12px",
                   }}
                 />
-                {activeTab === "aqi" ? (
+                {activeTab === "aqi" && (
                   <Area
                     type="monotone"
                     dataKey="aqi"
@@ -279,7 +352,8 @@ export default function ThingSpeakModal({
                     fill="url(#colorAqi)"
                     name="AQI"
                   />
-                ) : (
+                )}
+                {activeTab === "co" && (
                   <Area
                     type="monotone"
                     dataKey="co"
@@ -288,6 +362,28 @@ export default function ThingSpeakModal({
                     fillOpacity={1}
                     fill="url(#colorCo)"
                     name="CO (ppm)"
+                  />
+                )}
+                {activeTab === "methane" && (
+                  <Area
+                    type="monotone"
+                    dataKey="methane"
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorMethane)"
+                    name="Methane (ppm)"
+                  />
+                )}
+                {activeTab === "lpg" && (
+                  <Area
+                    type="monotone"
+                    dataKey="lpg"
+                    stroke="#f97316"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorLpg)"
+                    name="LPG / Smoke (ppm)"
                   />
                 )}
               </AreaChart>
@@ -300,7 +396,7 @@ export default function ThingSpeakModal({
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-parchment flex items-center gap-1.5">
               <KeyRound size={13} className="text-emerald-400" />
-              ThingSpeak Read API Key (Optional for Private Feed History)
+              ThingSpeak Read API Key (Pre-configured)
             </label>
             <a
               href={`https://thingspeak.mathworks.com/channels/${channelId}`}
@@ -313,13 +409,13 @@ export default function ThingSpeakModal({
           </div>
 
           <p className="text-[11px] text-parchment/60 leading-relaxed">
-            Your ESP32 is streaming live data via MQTT. To also load full 24-hour historical charts, enter your Read API Key from ThingSpeak (under <strong>API Keys</strong> tab), or set your channel to <strong>Public</strong> under Sharing.
+            Your GreenXchange backend polls ThingSpeak channel <strong>#{channelId}</strong> every 15-20s using your Read API Key. Enter a new key below if rotated.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
-              placeholder="e.g. 16-character Read API Key"
+              placeholder="e.g. 9HWV9GKDI4TGLY7O"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               className="flex-1 bg-black/30 border border-white/15 rounded-xl px-3.5 py-2 text-xs text-parchment placeholder-parchment/30 focus:outline-none focus:border-emerald-400 font-mono"
@@ -327,10 +423,10 @@ export default function ThingSpeakModal({
             <button
               onClick={handleSaveAndSync}
               disabled={syncing}
-              className="bg-fern hover:bg-forest text-parchment px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 border border-white/20 shadow-md disabled:opacity-50"
+              className="bg-fern hover:bg-forest text-parchment px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 border border-white/20 shadow-md disabled:opacity-50 shrink-0"
             >
               <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
-              {syncing ? "Syncing..." : "Save & Sync Now"}
+              {syncing ? "Syncing..." : "Sync Now"}
             </button>
           </div>
 

@@ -60,7 +60,7 @@ class Settings(BaseSettings):
 
     # ThingSpeak IoT Channel & MQTT Settings
     THINGSPEAK_CHANNEL_ID: str = "3499335"
-    THINGSPEAK_READ_API_KEY: str = ""
+    THINGSPEAK_READ_API_KEY: str = "9HWV9GKDI4TGLY7O"
     THINGSPEAK_MQTT_CLIENT_ID: str = "GgwMOC8KCyQlIzsoLhgcARw"
     THINGSPEAK_MQTT_USERNAME: str = "GgwMOC8KCyQlIzsoLhgcARw"
     THINGSPEAK_MQTT_PASSWORD: str = "buw0sT0NKP2HU5VOilaICd2D"

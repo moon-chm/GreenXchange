@@ -129,29 +129,51 @@ class ThingSpeakManager:
             logger.debug(f"Redis store telemetry error: {e}")
 
     async def get_latest_telemetry(self) -> Dict[str, Any]:
-        """Returns the most recent hardware telemetry from Redis or memory."""
+        """Returns the most recent hardware telemetry from Redis, memory, or directly from ThingSpeak REST API."""
         global _in_memory_latest_telemetry
+        now = int(time.time())
+
+        # 1. Check Redis cache if fresh (< 15s)
         try:
             r = await self.get_redis()
             if r:
                 raw = await r.get("env:hardware:latest")
                 if raw:
                     data = json.loads(raw)
-                    age = int(time.time()) - data.get("timestamp", 0)
-                    data["connected"] = age <= 180  # Considered connected if ping in last 3 min
-                    data["age_seconds"] = age
-                    return data
+                    age = now - data.get("timestamp", 0)
+                    if age < 15:
+                        data["connected"] = age <= 180
+                        data["age_seconds"] = age
+                        return data
         except Exception as e:
             logger.debug(f"Redis read telemetry error: {e}")
 
+        # 2. Check in-memory telemetry if fresh (< 15s)
+        if _in_memory_latest_telemetry:
+            age = now - _in_memory_latest_telemetry.get("timestamp", 0)
+            if age < 15:
+                data = dict(_in_memory_latest_telemetry)
+                data["connected"] = age <= 180
+                data["age_seconds"] = age
+                return data
+
+        # 3. Auto-refresh from ThingSpeak REST API
+        try:
+            feed_result = await self.fetch_rest_feeds(results=10)
+            if feed_result.get("success") and feed_result.get("latest"):
+                return feed_result["latest"]
+        except Exception as e:
+            logger.warning(f"Auto-refresh from ThingSpeak REST API failed: {e}")
+
+        # 4. Fallback to existing memory cache if fetch failed
         if _in_memory_latest_telemetry:
             data = dict(_in_memory_latest_telemetry)
-            age = int(time.time()) - data.get("timestamp", 0)
+            age = now - data.get("timestamp", 0)
             data["connected"] = age <= 180
             data["age_seconds"] = age
             return data
 
-        # Fallback baseline when starting up
+        # 5. Baseline fallback when offline
         return {
             "connected": False,
             "source": "thingspeak",
@@ -160,8 +182,11 @@ class ThingSpeakManager:
             "aqi": 35,
             "co_ppm": 0.65,
             "mq7_co": 0.65,
-            "mq135_co2": 1.33,
-            "mq2_smoke": 0.00,
+            "mq135_co2": 16.32,
+            "methane_ppm": 16.32,
+            "mq2_smoke": 0.70,
+            "smoke_ppm": 0.70,
+            "lpg_ppm": 0.70,
             "air_quality_status": "GOOD",
             "alert_level": 140,
             "buzzer_active": False,
@@ -200,8 +225,9 @@ class ThingSpeakManager:
             history = []
             latest_aqi = 35.0
             latest_co = 0.65
-            latest_co2 = 1.33
-            latest_smoke = 0.0
+            latest_co2 = 16.32
+            latest_smoke = 0.70
+            latest_f5 = "0"
             latest_entry_id = None
             latest_timestamp = int(time.time())
 
@@ -211,6 +237,7 @@ class ThingSpeakManager:
                     f2 = float(f.get("field2")) if f.get("field2") is not None else None
                     f3 = float(f.get("field3")) if f.get("field3") is not None else None
                     f4 = float(f.get("field4")) if f.get("field4") is not None else None
+                    f5 = f.get("field5")
 
                     if f1 is not None:
                         latest_aqi = f1
@@ -220,6 +247,8 @@ class ThingSpeakManager:
                         latest_co2 = f3
                     if f4 is not None:
                         latest_smoke = f4
+                    if f5 is not None:
+                        latest_f5 = str(f5)
 
                     latest_entry_id = f.get("entry_id")
                     history.append({
@@ -228,7 +257,10 @@ class ThingSpeakManager:
                         "aqi": f1 if f1 is not None else latest_aqi,
                         "co_ppm": f2 if f2 is not None else latest_co,
                         "co2_ppm": f3 if f3 is not None else latest_co2,
-                        "smoke_ppm": f4 if f4 is not None else latest_smoke
+                        "methane_ppm": f3 if f3 is not None else latest_co2,
+                        "smoke_ppm": f4 if f4 is not None else latest_smoke,
+                        "lpg_ppm": f4 if f4 is not None else latest_smoke,
+                        "buzzer_status": f5
                     })
                 except Exception:
                     continue
@@ -245,10 +277,14 @@ class ThingSpeakManager:
                 "co_ppm": round(latest_co, 2),
                 "mq7_co": round(latest_co, 2),
                 "mq135_co2": round(latest_co2, 2),
+                "methane_ppm": round(latest_co2, 2),
                 "mq2_smoke": round(latest_smoke, 2),
+                "smoke_ppm": round(latest_smoke, 2),
+                "lpg_ppm": round(latest_smoke, 2),
+                "buzzer_status": latest_f5,
+                "buzzer_active": str(latest_f5) == "1" or latest_aqi > 140,
                 "air_quality_status": status_str,
                 "alert_level": 140,
-                "buzzer_active": latest_aqi > 140,
                 "timestamp": latest_timestamp,
                 "history": history
             }
