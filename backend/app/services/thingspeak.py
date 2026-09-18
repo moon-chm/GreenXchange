@@ -275,9 +275,11 @@ class ThingSpeakManager:
                 except Exception:
                     continue
 
+            now = int(time.time())
+            data_age = now - latest_timestamp if latest_timestamp > 0 else 9999
             status_str = calculate_cpcb_status(latest_aqi)
             telemetry = {
-                "connected": True,
+                "connected": data_age <= 180,  # True only if ESP32 uploaded in the last 3 minutes
                 "source": "thingspeak",
                 "channel_id": ch_id,
                 "channel_name": channel_info.get("name", "GreenXchange Air Quality"),
@@ -288,6 +290,7 @@ class ThingSpeakManager:
                 "mq7_co": round(latest_co, 2),
                 "mq135_co2": round(latest_co2, 2),
                 "methane_ppm": round(latest_co2, 2),
+                "co2_ppm": round(latest_co2, 2),
                 "mq2_smoke": round(latest_smoke, 2),
                 "smoke_ppm": round(latest_smoke, 2),
                 "lpg_ppm": round(latest_smoke, 2),
@@ -295,7 +298,8 @@ class ThingSpeakManager:
                 "buzzer_active": str(latest_f5) == "1" or latest_aqi > 140,
                 "air_quality_status": status_str,
                 "alert_level": 140,
-                "timestamp": latest_timestamp if latest_timestamp > 0 else int(time.time()),
+                "timestamp": latest_timestamp if latest_timestamp > 0 else now,
+                "age_seconds": data_age,
                 "history": history
             }
 
