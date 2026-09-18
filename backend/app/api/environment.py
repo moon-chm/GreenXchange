@@ -4,12 +4,11 @@ import logging
 import secrets
 import time
 from typing import Optional
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from app.api.deps import get_current_user
 from app.models.users import User
 from app.utils.geo import get_tile_id
-from app.worker.tasks import refresh_environment_profile
 from app.services.environment import generate_environment_profile
 import redis.asyncio as redis
 from app.core.config import settings
@@ -19,8 +18,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 
+
+async def _refresh_environment_profile_cache(lat: float, lng: float, tile_id: str):
+    """
+    Regenerates and re-caches a tile's environment profile in-process.
+    Not routed through Celery: nothing guarantees a worker process is deployed
+    to consume that queue (see app/main.py's periodic scheduler for the same
+    reasoning), so `.delay()` here would silently queue into Redis and never
+    run. Run via FastAPI BackgroundTasks instead — same effect (doesn't block
+    the response that triggered it), no worker dependency.
+    """
+    try:
+        profile = await generate_environment_profile(lat, lng)
+        cache_key = f"env:profile:{tile_id}"
+        await redis_client.setex(cache_key, 172800, json.dumps(profile))
+    except Exception as e:
+        logger.warning(f"Background environment profile refresh failed for tile {tile_id}: {e}")
+
+
 @router.get("/profile")
 async def get_environment_profile(
+    background_tasks: BackgroundTasks,
     lat: float = Query(..., description="Latitude"),
     lng: float = Query(..., description="Longitude"),
     current_user: User = Depends(get_current_user)
@@ -28,23 +46,23 @@ async def get_environment_profile(
     tile_id = get_tile_id(lat, lng)
     if not tile_id:
         return {"error": "Invalid coordinates"}
-        
+
     cache_key = f"env:profile:{tile_id}"
     cached_data = await redis_client.get(cache_key)
-    
+
     if cached_data:
         profile = json.loads(cached_data)
         updated_at = profile.get("updated_at", 0)
         age = int(time.time()) - updated_at
-        
+
         # Stale if older than 1800s (30 minutes)
         if age > 1800:
             profile["stale"] = True
             # Trigger async refresh
-            refresh_environment_profile.delay(lat, lng, tile_id)
-            
+            background_tasks.add_task(_refresh_environment_profile_cache, lat, lng, tile_id)
+
         return profile
-    
+
     # Cache miss: generate, save, and return
     profile = await generate_environment_profile(lat, lng)
     await redis_client.setex(cache_key, 172800, json.dumps(profile))  # 48 hours TTL
@@ -204,7 +222,7 @@ async def get_thingspeak_stream(
 
 
 @router.post("/thingspeak/config")
-async def configure_thingspeak(config: ThingSpeakConfigRequest):
+async def configure_thingspeak(config: ThingSpeakConfigRequest, current_user: User = Depends(get_current_user)):
     """Dynamically sets ThingSpeak Channel ID and Read API Key."""
     if config.channel_id:
         thingspeak_manager.channel_id = config.channel_id
@@ -228,7 +246,7 @@ async def configure_thingspeak(config: ThingSpeakConfigRequest):
 
 
 @router.post("/thingspeak/sync")
-async def sync_thingspeak_now():
+async def sync_thingspeak_now(current_user: User = Depends(get_current_user)):
     """Immediately forces an MQTT reconnection and feed sync."""
     thingspeak_manager.start_mqtt_listener()
     latest = await thingspeak_manager.get_latest_telemetry()

@@ -75,7 +75,7 @@ class ThingSpeakManager:
 
     def __init__(self):
         self.channel_id = settings.THINGSPEAK_CHANNEL_ID or "3499335"
-        self.read_api_key = settings.THINGSPEAK_READ_API_KEY
+        self.read_api_key = settings.THINGSPEAK_READ_API_KEY or "9HWV9GKDI4TGLY7O"
         self.mqtt_client = None
         self.is_mqtt_running = False
         self.last_sync_time = 0

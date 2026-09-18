@@ -11,7 +11,6 @@ from app.models.growth import GrowthUpdate
 from app.models.enums import VerificationStatus
 from app.utils.geo import haversine_distance, extract_exif_gps
 from app.services.media import sanitize_image, upload_to_minio
-from app.worker.tasks import verify_growth_update
 from app.core.config import settings
 import logging
 
@@ -141,11 +140,15 @@ async def submit_growth_update(
                     logger.warning(f"Reward crediting notice: {rw_err}")
                     
         except Exception as cv_err:
-            logger.warning(f"Immediate CV inference fallback: {cv_err}")
-            try:
-                verify_growth_update.delay(str(update_id))
-            except Exception:
-                pass
+            # No Celery worker is guaranteed to be running in every deployment
+            # (queuing here would go into Redis with nothing to ever consume
+            # it, leaving the update stuck at PENDING forever with no visible
+            # error). Resolve it immediately instead: flag for manual review
+            # so a human verifies it, same as the geo/EXIF-mismatch path above.
+            logger.warning(f"Immediate CV inference failed, flagging for manual review: {cv_err}")
+            growth_update.verification_status = VerificationStatus.MANUAL_REVIEW
+            growth_update.rejection_reason = "Automated verification unavailable — pending manual review"
+            await db.commit()
         
     return {
         "status": "success",

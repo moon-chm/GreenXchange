@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.api.deps import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token, decode_token
-from app.core.rate_limiter import check_rate_limit, record_failed_attempt, clear_failed_attempts
+from app.core.rate_limiter import (
+    check_rate_limit, record_failed_attempt, clear_failed_attempts,
+    check_endpoint_rate_limit, blocklist_token, is_token_blocklisted,
+)
 from app.models.users import User
 from app.schemas.auth import (
     UserCreate, UserResponse, Token, ForgotPasswordRequest, ResetPasswordRequest, MessageResponse
@@ -20,17 +23,27 @@ logger = logging.getLogger("auth")
 router = APIRouter()
 
 def _get_request_base_url(request: Request) -> str:
-    """Detects the frontend URL from request origin, referer, or configured FRONTEND_URL."""
+    """
+    Detects the frontend URL from request origin, referer, or configured FRONTEND_URL.
+
+    Origin/Referer are attacker-controlled on any non-browser request (curl,
+    Postman) — CORS doesn't stop a caller from setting them, it only stops a
+    *browser* from reading the response cross-origin. Trusting them blindly here
+    let an attacker point password-reset/verification emails at a phishing
+    domain, so every candidate is checked against settings.is_allowed_origin()
+    (the same origins CORS itself trusts) before use.
+    """
     origin = request.headers.get("origin")
-    if origin and ":8000" not in origin and "backend" not in origin:
+    if origin and settings.is_allowed_origin(origin) and ":8000" not in origin and "backend" not in origin:
         return origin.rstrip("/")
     referer = request.headers.get("referer")
     if referer:
         from urllib.parse import urlparse
         p = urlparse(referer)
-        if ":8000" not in p.netloc and "backend" not in p.netloc:
-            return f"{p.scheme}://{p.netloc}".rstrip("/")
-    
+        candidate = f"{p.scheme}://{p.netloc}"
+        if settings.is_allowed_origin(candidate) and ":8000" not in p.netloc and "backend" not in p.netloc:
+            return candidate.rstrip("/")
+
     host = request.headers.get("host", "")
     if "localhost:3000" in host or "127.0.0.1:3000" in host:
         return "http://localhost:3000"
@@ -43,6 +56,10 @@ def _get_request_base_url(request: Request) -> str:
 
 @router.post("/register", response_model=UserResponse)
 async def register(user_in: UserCreate, request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    # Unthrottled registration lets an attacker email-bomb arbitrary addresses
+    # (every call dispatches a real verification email) — cap per-IP attempts.
+    await check_endpoint_rate_limit(request, "register", max_requests=5, window_seconds=3600)
+
     clean_email = user_in.email.strip().lower()
     base_url = _get_request_base_url(request)
     now = datetime.now(timezone.utc)
@@ -121,6 +138,7 @@ async def verify_email(token: str = Query(...), db: AsyncSession = Depends(get_d
 
 @router.post("/resend-verification", response_model=MessageResponse)
 async def resend_verification(payload: ForgotPasswordRequest, request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    await check_endpoint_rate_limit(request, "resend_verification", max_requests=5, window_seconds=3600)
     clean_email = payload.email.strip().lower()
     try:
         result = await db.execute(select(User).where(User.email == clean_email))
@@ -146,6 +164,7 @@ async def resend_verification(payload: ForgotPasswordRequest, request: Request, 
 
 @router.post("/forgot-password", response_model=MessageResponse)
 async def forgot_password(payload: ForgotPasswordRequest, request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    await check_endpoint_rate_limit(request, "forgot_password", max_requests=5, window_seconds=3600)
     clean_email = payload.email.strip().lower()
     try:
         result = await db.execute(select(User).where(User.email == clean_email))
@@ -239,7 +258,13 @@ async def login(
         value=refresh_token,
         httponly=True,
         secure=True,
-        samesite="lax",
+        # Frontend and backend live on different onrender.com subdomains, which the
+        # public suffix list treats as different sites — SameSite=Lax cookies are
+        # never sent on cross-site XHR/fetch, only top-level navigation. "None"
+        # (paired with Secure, already set) is required for the browser to send
+        # this cookie on cross-origin API calls; localhost dev still works since
+        # modern browsers treat http://localhost as a secure context.
+        samesite="none",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400
     )
     
@@ -256,14 +281,18 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
         token_type = payload.get("type")
         if token_type != "refresh":
             raise HTTPException(status_code=401, detail="Invalid token type")
-            
+
+        jti = payload.get("jti")
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID missing in token")
-            
+
         user_uuid = uuid.UUID(user_id)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    if jti and await is_token_blocklisted(jti):
+        raise HTTPException(status_code=401, detail="Refresh token has been revoked")
         
     result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
@@ -274,6 +303,23 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/logout", response_model=MessageResponse)
-async def logout(response: Response):
-    response.delete_cookie(key="refresh_token", samesite="lax")
+async def logout(request: Request, response: Response):
+    # Blocklist the refresh token's jti so it can't be used again even if it
+    # was captured before logout — clearing the cookie alone only stops this
+    # browser from presenting it, it doesn't revoke the token itself.
+    refresh_token = request.cookies.get("refresh_token")
+    if refresh_token:
+        try:
+            payload = decode_token(refresh_token)
+            if payload.get("type") == "refresh" and payload.get("jti"):
+                exp = payload.get("exp")
+                remaining_days = settings.REFRESH_TOKEN_EXPIRE_DAYS
+                if exp:
+                    remaining_seconds = exp - datetime.now(timezone.utc).timestamp()
+                    remaining_days = max(1, int(remaining_seconds // 86400) + 1)
+                await blocklist_token(payload["jti"], remaining_days)
+        except Exception:
+            pass
+
+    response.delete_cookie(key="refresh_token", samesite="none", secure=True)
     return MessageResponse(message="Successfully logged out")

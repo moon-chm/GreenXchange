@@ -29,6 +29,7 @@ export const getBaseUrl = (): string => {
 const api = axios.create({
   baseURL: getBaseUrl(),
   timeout: 90000, // 90s for AI model inference and photo processing
+  withCredentials: true, // required so the httpOnly refresh_token cookie is sent/stored cross-origin
   headers: {
     'Content-Type': 'application/json',
   },
@@ -58,7 +59,7 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       try {
         const rootApi = getBaseUrl();
-        const res = await axios.post(`${rootApi}/auth/refresh`, {}, { timeout: 10000 });
+        const res = await axios.post(`${rootApi}/auth/refresh`, {}, { timeout: 10000, withCredentials: true });
         const { access_token } = res.data;
 
         if (typeof window !== 'undefined') {

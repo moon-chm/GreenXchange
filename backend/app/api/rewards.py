@@ -89,7 +89,7 @@ async def get_balance(
     db: AsyncSession = Depends(get_db)
 ):
     from app.models.plants import Plant
-    from app.services.rewards import credit_plant_registration_reward
+    from app.services.rewards import credit_plant_registration_reward, get_user_balance
 
     # Ensure any previously registered plants have rewards credited
     plants_res = await db.execute(select(Plant).filter(Plant.owner_id == current_user.id))
@@ -113,7 +113,7 @@ async def get_balance(
         .limit(10)
     )
     transactions = result.scalars().all()
-    balance = transactions[0].balance_snapshot if transactions else 0
+    balance = await get_user_balance(db, current_user.id)
     return BalanceResponse(balance=balance, recent_transactions=transactions)
 
 

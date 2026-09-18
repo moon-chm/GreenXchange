@@ -2,13 +2,37 @@ import os
 import uuid
 import secrets
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime, timezone, timedelta
 from app.models.users import User
 from app.models.rewards import RewardTransaction, MarketplaceItem, RedemptionTransaction, PayoutRequest, OrgPaymentRequest
 import traceback
 
 REWARD_MIN_INTERVAL_HOURS = int(os.getenv("REWARD_MIN_INTERVAL_HOURS", "24"))
+
+# Caps how many distinct accounts sharing the same device can collect the
+# plant-registration bonus — without this, one device could farm unlimited
+# free GXC by registering many throwaway accounts. Registration itself is
+# never blocked, only the bonus; a shared household device that legitimately
+# has a few real accounts is unaffected.
+MAX_REWARDED_ACCOUNTS_PER_DEVICE = int(os.getenv("MAX_REWARDED_ACCOUNTS_PER_DEVICE", "3"))
+
+
+async def get_user_balance(db: AsyncSession, user_id: uuid.UUID) -> int:
+    """
+    Authoritative current balance, computed as SUM(points) over the append-only
+    ledger rather than trusting the most recent row's `balance_snapshot`. The
+    snapshot column is kept for historical/audit display, but as a "trust the
+    last write" value a single bad snapshot (a race, a bug, a bad migration)
+    would corrupt every balance computed from it forever after. SUM is
+    self-healing: it always reflects the actual transaction history.
+    """
+    result = await db.execute(
+        select(func.coalesce(func.sum(RewardTransaction.points), 0))
+        .filter(RewardTransaction.user_id == user_id)
+    )
+    return int(result.scalar_one())
+
 
 async def credit_plant_registration_reward(
     db: AsyncSession,
@@ -21,6 +45,15 @@ async def credit_plant_registration_reward(
     Awards 50 GXC coins immediately and records an append-only RewardTransaction.
     """
     try:
+        # Lock the user row first so concurrent registrations (or this call
+        # racing the backfill loop in GET /rewards/balance) can't both read the
+        # same pre-credit balance and each write a transaction from it, silently
+        # dropping one credit.
+        user_res = await db.execute(select(User).filter(User.id == user_id).with_for_update())
+        user = user_res.scalar_one_or_none()
+        if not user:
+            return False
+
         # Check if already credited for this plant registration
         existing_tx = await db.execute(
             select(RewardTransaction).filter(
@@ -32,14 +65,28 @@ async def credit_plant_registration_reward(
         if existing_tx.scalar_one_or_none():
             return False
 
-        # Fetch most recent balance snapshot for user
-        latest_bal_res = await db.execute(
-            select(RewardTransaction.balance_snapshot)
-            .filter(RewardTransaction.user_id == user_id)
-            .order_by(RewardTransaction.created_at.desc())
-            .limit(1)
-        )
-        current_balance = latest_bal_res.scalar_one_or_none() or 0
+        # Anti-Sybil: cap how many distinct accounts on the same device get
+        # the bonus. Registration itself still proceeds — only the reward is
+        # withheld — so this never blocks a user from using the product.
+        awarded_this_device = False
+        if user.device_fingerprint:
+            distinct_accounts_res = await db.execute(
+                select(func.count(func.distinct(RewardTransaction.user_id)))
+                .join(User, User.id == RewardTransaction.user_id)
+                .filter(
+                    User.device_fingerprint == user.device_fingerprint,
+                    RewardTransaction.trigger_event == "PLANT_REGISTERED",
+                    RewardTransaction.user_id != user_id,
+                )
+            )
+            distinct_accounts = distinct_accounts_res.scalar_one() or 0
+            if distinct_accounts >= MAX_REWARDED_ACCOUNTS_PER_DEVICE:
+                awarded_this_device = True
+
+        if awarded_this_device:
+            return False
+
+        current_balance = await get_user_balance(db, user_id)
         new_balance = current_balance + points
 
         new_tx = RewardTransaction(
@@ -105,16 +152,10 @@ async def credit_growth_update_reward(db: AsyncSession, user_id: uuid.UUID, plan
                 print(f"Time-gate active. {delta.total_seconds()/3600}h elapsed, {REWARD_MIN_INTERVAL_HOURS}h required.")
                 return False
 
-        # 4. Fetch the absolute most recent transaction for the user to determine current balance snapshot
-        # (This is safe because we hold the User row lock, so no other transactions can insert concurrently)
-        latest_balance_result = await db.execute(
-            select(RewardTransaction.balance_snapshot)
-            .filter(RewardTransaction.user_id == user_id)
-            .order_by(RewardTransaction.created_at.desc())
-            .limit(1)
-        )
-        current_balance = latest_balance_result.scalar_one_or_none() or 0
-        
+        # 4. Compute current balance (safe: we hold the User row lock, so no
+        # other transaction for this user can insert concurrently)
+        current_balance = await get_user_balance(db, user_id)
+
         # 5. Calculate new balance
         points_to_award = 10  # Configurable points for growth update
         new_balance = current_balance + points_to_award
@@ -199,13 +240,7 @@ async def redeem_marketplace_item(db: AsyncSession, user_id: uuid.UUID, item_id:
             raise ValueError("Item is out of stock")
 
         # 3. Check current balance
-        bal_res = await db.execute(
-            select(RewardTransaction.balance_snapshot)
-            .filter(RewardTransaction.user_id == user_id)
-            .order_by(RewardTransaction.created_at.desc())
-            .limit(1)
-        )
-        current_balance = bal_res.scalar_one_or_none() or 0
+        current_balance = await get_user_balance(db, user_id)
 
         if current_balance < item.points_cost:
             raise ValueError(f"Insufficient GXC balance. You have {current_balance} pts, item requires {item.points_cost} pts.")
@@ -269,13 +304,7 @@ async def request_wallet_payout(db: AsyncSession, user_id: uuid.UUID, amount_gxc
             raise ValueError("User not found")
 
         # 2. Check balance
-        bal_res = await db.execute(
-            select(RewardTransaction.balance_snapshot)
-            .filter(RewardTransaction.user_id == user_id)
-            .order_by(RewardTransaction.created_at.desc())
-            .limit(1)
-        )
-        current_balance = bal_res.scalar_one_or_none() or 0
+        current_balance = await get_user_balance(db, user_id)
 
         if current_balance < amount_gxc:
             raise ValueError(f"Insufficient GXC balance. Available: {current_balance} GXC, requested: {amount_gxc} GXC.")
@@ -321,6 +350,14 @@ async def create_org_payment_request(
     if amount_gxc <= 0:
         raise ValueError("Requested GXC payment amount must be greater than 0")
 
+    # Only organization accounts may issue payment requests — without this check
+    # any authenticated citizen could impersonate an "organization" (using their
+    # own display name) and solicit GXC payments from other users.
+    org_res = await db.execute(select(User).filter(User.id == org_id))
+    org_user = org_res.scalars().first()
+    if not org_user or not (getattr(org_user, "is_org", False) or getattr(org_user, "role", None) == "ORGANIZATION"):
+        raise ValueError("Only authorized organization accounts can issue payment requests")
+
     # Resolve target user by UUID or Email
     query = select(User)
     try:
@@ -349,9 +386,6 @@ async def create_org_payment_request(
     await db.commit()
     await db.refresh(req)
 
-    # Fetch Org name for email notification
-    org_res = await db.execute(select(User).filter(User.id == org_id))
-    org_user = org_res.scalars().first()
     org_name = org_user.name if org_user else "Partner Organization"
 
     # Dispatch email notification to target citizen directly. Not routed through
@@ -409,13 +443,7 @@ async def approve_org_payment_request(
             raise ValueError("Pending payment request not found or already processed")
 
         # 3. Check user balance
-        bal_res = await db.execute(
-            select(RewardTransaction.balance_snapshot)
-            .filter(RewardTransaction.user_id == user_id)
-            .order_by(RewardTransaction.created_at.desc())
-            .limit(1)
-        )
-        user_bal = bal_res.scalar_one_or_none() or 0
+        user_bal = await get_user_balance(db, user_id)
         if user_bal < req.amount_gxc:
             raise ValueError(f"Insufficient GXC balance. Available: {user_bal} GXC, Required: {req.amount_gxc} GXC.")
 
@@ -433,13 +461,7 @@ async def approve_org_payment_request(
         org_res = await db.execute(select(User).filter(User.id == req.org_id).with_for_update())
         org_user = org_res.scalar_one_or_none()
         if org_user:
-            org_bal_res = await db.execute(
-                select(RewardTransaction.balance_snapshot)
-                .filter(RewardTransaction.user_id == req.org_id)
-                .order_by(RewardTransaction.created_at.desc())
-                .limit(1)
-            )
-            org_bal = org_bal_res.scalar_one_or_none() or 0
+            org_bal = await get_user_balance(db, req.org_id)
             new_org_bal = org_bal + req.amount_gxc
             org_tx = RewardTransaction(
                 user_id=req.org_id,

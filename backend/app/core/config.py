@@ -1,5 +1,12 @@
+import re
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Mirrors the CORSMiddleware allow_origin_regex in app/main.py — kept in one
+# place so auth.py's email-link origin check can't silently drift from what
+# CORS actually allows.
+_ALLOWED_ORIGIN_REGEX = re.compile(r"^https?://greenxchange.*\.onrender\.com$")
+
 
 class Settings(BaseSettings):
     POSTGRES_USER: str = "greenxchange"
@@ -58,14 +65,40 @@ class Settings(BaseSettings):
     # header). Left unset, that endpoint stays open for backward compatibility.
     HARDWARE_API_KEY: str = ""
 
-    # ThingSpeak IoT Channel & MQTT Settings
-    THINGSPEAK_CHANNEL_ID: str = "3499335"
-    THINGSPEAK_READ_API_KEY: str = "9HWV9GKDI4TGLY7O"
-    THINGSPEAK_MQTT_CLIENT_ID: str = "GgwMOC8KCyQlIzsoLhgcARw"
-    THINGSPEAK_MQTT_USERNAME: str = "GgwMOC8KCyQlIzsoLhgcARw"
-    THINGSPEAK_MQTT_PASSWORD: str = "buw0sT0NKP2HU5VOilaICd2D"
+    # ThingSpeak IoT Channel & MQTT Settings.
+    # Real credentials belong only in .env / the deployment's env vars (already
+    # set there and in render.yaml) — never hardcoded here, since this file is
+    # committed to source control. Non-secret defaults (public broker host/port)
+    # are kept as-is.
+    THINGSPEAK_CHANNEL_ID: str = ""
+    THINGSPEAK_READ_API_KEY: str = ""
+    THINGSPEAK_MQTT_CLIENT_ID: str = ""
+    THINGSPEAK_MQTT_USERNAME: str = ""
+    THINGSPEAK_MQTT_PASSWORD: str = ""
     THINGSPEAK_MQTT_HOST: str = "mqtt3.thingspeak.com"
     THINGSPEAK_MQTT_PORT: int = 1883
+
+    def is_allowed_origin(self, origin: str) -> bool:
+        """
+        True if `origin` (scheme://host[:port], no trailing slash) is a
+        front-end origin this app actually serves — the same set CORS trusts.
+        Used to validate caller-supplied Origin/Referer headers before they're
+        used to build links (e.g. password reset emails), since those headers
+        are attacker-controlled on non-browser requests and CORS itself doesn't
+        block anyone from setting them.
+        """
+        if not origin:
+            return False
+        origin = origin.rstrip("/")
+        allowed = {
+            self.FRONTEND_URL.rstrip("/"),
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:8000",
+        }
+        if origin in allowed:
+            return True
+        return bool(_ALLOWED_ORIGIN_REGEX.match(origin))
 
     @property
     def jwt_private_key(self) -> str:

@@ -11,7 +11,6 @@ from app.db.session import AsyncSessionLocal
 from sqlalchemy import select, func
 from app.models.users import User
 from app.models.plants import Plant
-from app.models.rewards import RewardTransaction
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +39,8 @@ def task_send_org_payment_request_email(to_email: str, citizen_name: str, org_na
     return _run_async(send_org_payment_request_email(to_email, citizen_name, org_name, amount_gxc, description, base_url))
 
 async def _process_weekly_digests():
+    from app.services.rewards import get_user_balance
+
     async with AsyncSessionLocal() as session:
         users_res = await session.execute(select(User).filter(User.is_active == True, User.is_org == False))
         users = users_res.scalars().all()
@@ -47,15 +48,9 @@ async def _process_weekly_digests():
             # Calculate stats
             p_res = await session.execute(select(func.count(Plant.id)).filter(Plant.owner_id == u.id))
             p_count = p_res.scalar() or 0
-            
-            r_res = await session.execute(
-                select(RewardTransaction.balance_snapshot)
-                .filter(RewardTransaction.user_id == u.id)
-                .order_by(RewardTransaction.created_at.desc())
-                .limit(1)
-            )
-            balance = r_res.scalar() or 0
-            
+
+            balance = await get_user_balance(session, u.id)
+
             stats = {
                 "plants_count": p_count,
                 "carbon_offset_kg": float(p_count * 22.5),

@@ -68,7 +68,12 @@ services:
     volumes:
       - ./backend:/app
       - ./ml_model:/app/ml_model:ro
-      - "./ALL MODELS:/app/models:ro"
+      # NOTE: don't add a separate "./ALL MODELS:/app/models:ro" mount here —
+      # ./backend:/app already provides the real weights at backend/models/
+      # (/app/models inside the container). A prior mount pointed /app/models
+      # at "ALL MODELS" instead, which only contains training notebooks, no
+      # .pth files — it silently shadowed the real weights and made local
+      # docker-compose CV verification fall back to heuristics with no error.
     depends_on:
       db:
         condition: service_healthy
@@ -95,7 +100,12 @@ services:
     volumes:
       - ./backend:/app
       - ./ml_model:/app/ml_model:ro
-      - "./ALL MODELS:/app/models:ro"
+      # NOTE: don't add a separate "./ALL MODELS:/app/models:ro" mount here —
+      # ./backend:/app already provides the real weights at backend/models/
+      # (/app/models inside the container). A prior mount pointed /app/models
+      # at "ALL MODELS" instead, which only contains training notebooks, no
+      # .pth files — it silently shadowed the real weights and made local
+      # docker-compose CV verification fall back to heuristics with no error.
     depends_on:
       db:
         condition: service_healthy

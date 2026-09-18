@@ -1,8 +1,10 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import asyncio
 import uuid
 import logging
+from datetime import datetime, timezone
 import app.models  # Registers all models with Base.metadata
 from app.models.base import Base
 from app.db.session import engine
@@ -15,6 +17,70 @@ logger = logging.getLogger("backend")
 
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+
+async def _periodic_environment_refresh_loop():
+    """
+    Replaces Celery beat's 30-min active-location environment refresh.
+    render.yaml deploys no `worker`/`beat` service, so Celery tasks queued via
+    `.delay()` would sit in Redis forever with nothing consuming them (same
+    reasoning as the growth-verification and env-profile-cache fixes). This
+    keeps the periodic cache-warming job working on a single-instance
+    deployment without requiring extra paid infrastructure; if a real Celery
+    worker + beat are deployed later, this loop can be disabled and
+    app/worker/tasks.py's `refresh_active_locations` beat entry re-enabled.
+    """
+    from app.worker.tasks import get_active_locations
+    from app.utils.geo import get_tile_id
+    from app.api.environment import _refresh_environment_profile_cache
+
+    while True:
+        try:
+            await asyncio.sleep(1800)  # 30 minutes
+            users = await get_active_locations()
+            unique_tiles = {}
+            for user in users:
+                tile_id = get_tile_id(user.location_lat, user.location_lng)
+                if tile_id and tile_id not in unique_tiles:
+                    unique_tiles[tile_id] = (user.location_lat, user.location_lng)
+            for tile_id, (lat, lng) in unique_tiles.items():
+                await _refresh_environment_profile_cache(lat, lng, tile_id)
+            if unique_tiles:
+                logger.info(f"Periodic environment refresh: updated {len(unique_tiles)} tile(s).")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Periodic environment refresh loop error: {e}")
+
+
+async def _periodic_weekly_digest_loop():
+    """
+    Replaces Celery beat's Monday-9AM weekly digest email. Same reasoning as
+    _periodic_environment_refresh_loop above. Checks hourly and fires once
+    per ISO week, guarded by a Redis flag so a restart near the trigger hour
+    can't double-send.
+    """
+    from app.worker.email_tasks import _process_weekly_digests
+    import redis.asyncio as redis
+
+    redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            if now.weekday() == 0 and now.hour == 9:  # Monday, 9 AM UTC
+                iso_year, iso_week, _ = now.isocalendar()
+                week_key = f"weekly_digest_sent:{iso_year}-W{iso_week}"
+                already_sent = await redis_client.get(week_key)
+                if not already_sent:
+                    await _process_weekly_digests()
+                    await redis_client.setex(week_key, 8 * 86400, "1")
+                    logger.info("Weekly eco-activity digest dispatched.")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Periodic weekly digest loop error: {e}")
+        await asyncio.sleep(3600)  # check hourly
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -72,6 +138,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ ThingSpeak MQTT listener notice: {e}")
 
+    # In-process periodic jobs — no Celery worker/beat is deployed (see
+    # _periodic_environment_refresh_loop docstring), so these run inline here.
+    background_jobs = [
+        asyncio.create_task(_periodic_environment_refresh_loop()),
+        asyncio.create_task(_periodic_weekly_digest_loop()),
+    ]
+    logger.info("✅ In-process periodic job scheduler started (env refresh, weekly digest).")
+
     yield
 
     # Clean shutdown for ThingSpeak MQTT
@@ -80,6 +154,14 @@ async def lifespan(app: FastAPI):
         thingspeak_manager.stop_mqtt_listener()
     except Exception:
         pass
+
+    for job in background_jobs:
+        job.cancel()
+    for job in background_jobs:
+        try:
+            await job
+        except asyncio.CancelledError:
+            pass
 
 async def _seed_default_species():
     """Ensure at least the default plant species exist in the database."""
@@ -357,10 +439,12 @@ allowed_origins = [
     "http://localhost:8000",
 ]
 
+from app.core.config import _ALLOWED_ORIGIN_REGEX
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"https?://greenxchange.*\.onrender\.com",
+    allow_origin_regex=_ALLOWED_ORIGIN_REGEX.pattern,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],

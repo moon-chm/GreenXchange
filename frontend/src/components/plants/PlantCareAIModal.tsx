@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  X, Check, AlertCircle, RefreshCw, 
+import {
+  X, Check, AlertCircle, RefreshCw,
   Droplets, Sun, Bug, Wind, ChevronRight,
-  BookOpen
+  BookOpen, ArrowLeft, Sparkles, Scissors
 } from "lucide-react";
 import api from "@/lib/axios";
 
