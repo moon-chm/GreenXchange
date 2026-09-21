@@ -13,6 +13,7 @@ import DrivesPanel from "@/components/dashboard/DrivesPanel";
 import NewsFeedPanel from "@/components/dashboard/NewsFeedPanel";
 import CinematicIntroLoader from "@/components/shared/CinematicIntroLoader";
 import { fadeUp } from "@/lib/motion";
+import { getThingSpeakChannelId, getThingSpeakReadApiKey } from "@/lib/thingspeak";
 
 export default function Dashboard() {
   const [data, setData] = useState<any>(null);
@@ -114,9 +115,10 @@ export default function Dashboard() {
 
     const fetchThingSpeakDirectly = async () => {
       try {
-        const savedKey = typeof window !== "undefined" ? localStorage.getItem("thingspeak_read_api_key") || "9HWV9GKDI4TGLY7O" : "9HWV9GKDI4TGLY7O";
+        const channelId = getThingSpeakChannelId();
+        const savedKey = getThingSpeakReadApiKey();
         const tsRes = await fetch(
-          `https://api.thingspeak.com/channels/3499335/feeds/last.json?api_key=${savedKey}`
+          `https://api.thingspeak.com/channels/${channelId}/feeds/last.json?api_key=${savedKey}`
         );
         if (!tsRes.ok) return;
         const feed = await tsRes.json();
@@ -130,9 +132,9 @@ export default function Dashboard() {
           const hwData = {
             connected: true,
             source: "thingspeak",
-            channel_id: "3499335",
+            channel_id: channelId,
             entry_id: feed.entry_id,
-            device_id: "ESP32 ThingSpeak (Ch #3499335)",
+            device_id: `ESP32 ThingSpeak (Ch #${channelId})`,
             aqi: Math.round(aqi),
             co_ppm: co_ppm,
             mq7_co: co_ppm,

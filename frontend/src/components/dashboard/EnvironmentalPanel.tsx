@@ -21,6 +21,7 @@ import StaleIndicator from "@/components/shared/StaleIndicator";
 import { aqiColor, aqiLabel } from "@/lib/palette";
 import { fadeUp } from "@/lib/motion";
 import ThingSpeakModal from "@/components/dashboard/ThingSpeakModal";
+import { getThingSpeakChannelId } from "@/lib/thingspeak";
 
 interface HardwareData {
   connected: boolean;
@@ -110,7 +111,7 @@ export default function EnvironmentalPanel({
   const progressPct = Math.min((aqi / 500) * 100, 100);
   const advice = getAqiAdvice(aqi);
   const hw = data?.hardware;
-  const isThingSpeak = hw?.source === "thingspeak" || hw?.channel_id === "3499335" || hw?.device_id?.includes("ThingSpeak");
+  const isThingSpeak = hw?.source === "thingspeak" || hw?.device_id?.includes("ThingSpeak");
 
   return (
     <>
@@ -152,7 +153,7 @@ export default function EnvironmentalPanel({
               <Radio size={12} className="text-emerald-400 animate-pulse group-hover:scale-110 transition-transform" />
               <span>{isThingSpeak ? "ESP32 • ThingSpeak Live" : "IoT Hardware Stream"}</span>
               <span className="text-[9px] opacity-70 font-mono bg-emerald-950/40 px-1 py-0.2 rounded border border-emerald-400/20">
-                Ch #{hw?.channel_id || "3499335"}
+                Ch #{hw?.channel_id || getThingSpeakChannelId()}
               </span>
               <SlidersHorizontal size={10} className="text-emerald-400/70 ml-0.5" />
             </button>
@@ -313,7 +314,6 @@ export default function EnvironmentalPanel({
       <ThingSpeakModal
         isOpen={showThingSpeakModal}
         onClose={() => setShowThingSpeakModal(false)}
-        channelId={hw?.channel_id || "3499335"}
         currentAqi={hw?.aqi ?? aqi}
         currentCo={hw?.co_ppm ?? hw?.mq7_co ?? 0.65}
         currentMethane={hw?.methane_ppm ?? hw?.co2_ppm ?? 16.32}

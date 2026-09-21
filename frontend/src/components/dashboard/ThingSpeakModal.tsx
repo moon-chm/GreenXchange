@@ -25,11 +25,11 @@ import {
   CartesianGrid
 } from "recharts";
 import api from "@/lib/axios";
+import { getThingSpeakChannelId, getThingSpeakReadApiKey, saveThingSpeakConfig } from "@/lib/thingspeak";
 
 interface ThingSpeakModalProps {
   isOpen: boolean;
   onClose: () => void;
-  channelId?: string;
   currentAqi?: number;
   currentCo?: number;
   currentMethane?: number;
@@ -40,7 +40,6 @@ interface ThingSpeakModalProps {
 export default function ThingSpeakModal({
   isOpen,
   onClose,
-  channelId = "3499335",
   currentAqi = 35,
   currentCo = 0.65,
   currentMethane = 16.32,
@@ -49,6 +48,12 @@ export default function ThingSpeakModal({
 }: ThingSpeakModalProps) {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  // Channel ID used to be hardcoded here (and in page.tsx/EnvironmentalPanel)
+  // with no way to change it — pointing hardware at a new/private channel had
+  // no effect on the dashboard. It's now editable, same as the API key below,
+  // and both persist via lib/thingspeak so every poller (this modal, and the
+  // dashboard's own live poll in page.tsx) reads the same configured channel.
+  const [channelId, setChannelId] = useState("3499335");
   const [apiKey, setApiKey] = useState("9HWV9GKDI4TGLY7O");
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [historyData, setHistoryData] = useState<any[]>([]);
@@ -57,25 +62,28 @@ export default function ThingSpeakModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    // Load saved API key from localStorage or fallback to default
-    const savedKey = localStorage.getItem("thingspeak_read_api_key") || "9HWV9GKDI4TGLY7O";
+    // Load saved channel/API key (localStorage → env var → fallback default)
+    const savedChannelId = getThingSpeakChannelId();
+    const savedKey = getThingSpeakReadApiKey();
+    setChannelId(savedChannelId);
     setApiKey(savedKey);
 
-    loadThingSpeakStream(savedKey);
+    loadThingSpeakStream(savedChannelId, savedKey);
   }, [isOpen]);
 
-  const loadThingSpeakStream = async (keyToUse?: string) => {
+  const loadThingSpeakStream = async (channelToUse?: string, keyToUse?: string) => {
     setLoading(true);
     setStatusMsg(null);
     try {
+      const ch = channelToUse !== undefined ? channelToUse : channelId;
       const k = keyToUse !== undefined ? keyToUse : apiKey;
       let payload: any = null;
       try {
-        const res = await api.get(`/environment/thingspeak?channel_id=${channelId}${k ? `&api_key=${k}` : ""}`);
+        const res = await api.get(`/environment/thingspeak?channel_id=${ch}${k ? `&api_key=${k}` : ""}`);
         payload = res.data;
       } catch (backendErr) {
         // Resilient client-side fallback: fetch directly from ThingSpeak REST API
-        const tsRes = await fetch(`https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${k}&results=20`);
+        const tsRes = await fetch(`https://api.thingspeak.com/channels/${ch}/feeds.json?api_key=${k}&results=20`);
         if (tsRes.ok) {
           const raw = await tsRes.json();
           payload = {
@@ -137,12 +145,14 @@ export default function ThingSpeakModal({
     setSyncing(true);
     setStatusMsg(null);
     try {
-      localStorage.setItem("thingspeak_read_api_key", apiKey.trim());
+      const trimmedChannel = channelId.trim();
+      const trimmedKey = apiKey.trim();
+      saveThingSpeakConfig(trimmedChannel, trimmedKey);
       await api.post("/environment/thingspeak/config", {
-        channel_id: channelId,
-        read_api_key: apiKey.trim() || null,
+        channel_id: trimmedChannel,
+        read_api_key: trimmedKey || null,
       });
-      await loadThingSpeakStream(apiKey.trim());
+      await loadThingSpeakStream(trimmedChannel, trimmedKey);
       setStatusMsg({ type: "success", text: "Successfully synced with ThingSpeak Channel!" });
     } catch (err: any) {
       setStatusMsg({
@@ -410,12 +420,12 @@ export default function ThingSpeakModal({
           </div>
         </div>
 
-        {/* Read API Key Configuration & Sync Box */}
+        {/* Channel + Read API Key Configuration & Sync Box */}
         <div className="bg-white/5 border border-white/10 rounded-xl p-4 z-10 space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-parchment flex items-center gap-1.5">
-              <KeyRound size={13} className="text-emerald-400" />
-              ThingSpeak Read API Key (Pre-configured)
+              <Cpu size={13} className="text-emerald-400" />
+              ThingSpeak Channel
             </label>
             <a
               href={`https://thingspeak.mathworks.com/channels/${channelId}`}
@@ -427,8 +437,21 @@ export default function ThingSpeakModal({
             </a>
           </div>
 
+          <input
+            type="text"
+            placeholder="e.g. 3499335"
+            value={channelId}
+            onChange={(e) => setChannelId(e.target.value)}
+            className="w-full bg-black/30 border border-white/15 rounded-xl px-3.5 py-2 text-xs text-parchment placeholder-parchment/30 focus:outline-none focus:border-emerald-400 font-mono"
+          />
+
+          <label className="text-xs font-semibold text-parchment flex items-center gap-1.5 pt-1">
+            <KeyRound size={13} className="text-emerald-400" />
+            ThingSpeak Read API Key
+          </label>
+
           <p className="text-[11px] text-parchment/60 leading-relaxed">
-            Your GreenXchange backend polls ThingSpeak channel <strong>#{channelId}</strong> every 15-20s using your Read API Key. Enter a new key below if rotated.
+            The dashboard polls ThingSpeak channel <strong>#{channelId}</strong> every 15-20s. If your channel is private, enter its Read API Key below (found on the channel's "API Keys" tab), then Sync Now.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2">
