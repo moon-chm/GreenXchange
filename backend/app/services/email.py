@@ -227,8 +227,22 @@ def _get_base_template(content_html: str, preview_text: str = "", icon: str = "�
 </body>
 </html>"""
 
-def _build_mime_message(to_email: str, subject: str, html_content: str, text_content: str = "") -> MIMEMultipart:
-    """Builds a RFC-compliant multipart MIME message."""
+def _build_mime_message(
+    to_email: str,
+    subject: str,
+    html_content: str,
+    text_content: str = "",
+    priority: str = "normal",
+) -> MIMEMultipart:
+    """
+    Builds a RFC-compliant multipart MIME message.
+
+    Args:
+        priority: One of 'high', 'normal', or 'low'.
+                  'high'   → X-Priority: 1  — shown as urgent on Android/iOS/Outlook
+                  'normal' → X-Priority: 3  — default behaviour
+                  'low'    → X-Priority: 5  — low-importance (newsletters, digests)
+    """
     import re
     domain = settings.GMAIL_SENDER.split("@")[-1] if "@" in settings.GMAIL_SENDER else "greenxchange.org"
 
@@ -241,6 +255,20 @@ def _build_mime_message(to_email: str, subject: str, html_content: str, text_con
     msg["Reply-To"] = settings.GMAIL_SENDER
     msg["X-Mailer"] = "GreenXchange-Mailer/2.0"
 
+    # ── Email priority headers ──────────────────────────────────────────────
+    # Respected by: Outlook, Apple Mail, Thunderbird, Android Mail, iOS Mail.
+    # Note: Gmail's own UI ignores these (it uses ML-based importance instead).
+    _PRIORITY_MAP = {
+        "high":   ("1", "high",   "High"),
+        "normal": ("3", "normal", "Normal"),
+        "low":    ("5", "low",    "Low"),
+    }
+    x_prio, importance, ms_prio = _PRIORITY_MAP.get(priority, _PRIORITY_MAP["normal"])
+    msg["X-Priority"]       = x_prio      # RFC informal — widely supported
+    msg["Importance"]       = importance   # RFC 2156 / IETF standard
+    msg["X-MSMail-Priority"] = ms_prio    # Microsoft Outlook specific
+    # ───────────────────────────────────────────────────────────────────────
+
     if not text_content:
         text_content = html_content.replace("<br>", "\n").replace("</p>", "\n\n").replace("</h2>", "\n\n")
         text_content = re.sub("<[^<]+?>", "", text_content)
@@ -250,7 +278,7 @@ def _build_mime_message(to_email: str, subject: str, html_content: str, text_con
     return msg
 
 
-def _send_via_gmail_api_sync(to_email: str, subject: str, html_content: str, text_content: str = "") -> dict:
+def _send_via_gmail_api_sync(to_email: str, subject: str, html_content: str, text_content: str = "", priority: str = "normal") -> dict:
     """
     Sends email via Gmail API using OAuth2 refresh token.
     Uses HTTPS (port 443) — never blocked on Render or any hosting platform.
@@ -270,7 +298,7 @@ def _send_via_gmail_api_sync(to_email: str, subject: str, html_content: str, tex
 
         service = build("gmail", "v1", credentials=creds, cache_discovery=False)
 
-        msg = _build_mime_message(to_email, subject, html_content, text_content)
+        msg = _build_mime_message(to_email, subject, html_content, text_content, priority=priority)
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
 
         service.users().messages().send(
@@ -278,7 +306,7 @@ def _send_via_gmail_api_sync(to_email: str, subject: str, html_content: str, tex
             body={"raw": raw}
         ).execute()
 
-        logger.info(f"✅ Email successfully delivered to '{to_email}' via Gmail API")
+        logger.info(f"✅ Email successfully delivered to '{to_email}' via Gmail API (priority={priority})")
         return {"status": "sent", "provider": "gmail_api"}
 
     except Exception as e:
@@ -286,14 +314,14 @@ def _send_via_gmail_api_sync(to_email: str, subject: str, html_content: str, tex
         return {"error": str(e), "status": "failed"}
 
 
-def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content: str = "") -> dict:
+def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content: str = "", priority: str = "normal") -> dict:
     """Fallback SMTP delivery — only used in local/non-Render environments where port 587 is open."""
     import time, smtplib, socket
     max_retries = 2
     last_error = None
 
     try:
-        msg = _build_mime_message(to_email, subject, html_content, text_content)
+        msg = _build_mime_message(to_email, subject, html_content, text_content, priority=priority)
         clean_pass = settings.SMTP_PASSWORD.replace(" ", "").strip()
 
         for attempt in range(1, max_retries + 1):
@@ -329,18 +357,23 @@ def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content
         return {"error": str(e), "status": "failed"}
 
 
-async def send_email(to_email: str, subject: str, html_content: str, text_content: str = ""):
+async def send_email(to_email: str, subject: str, html_content: str, text_content: str = "", priority: str = "normal"):
     """
     Core email dispatcher. Priority order:
       1. Gmail API (OAuth2 over HTTPS — primary, works on all platforms)
       2. SMTP (fallback for local dev where port 587 is open)
       3. Resend API (fallback if RESEND_API_KEY is configured)
+
+    Args:
+        priority: 'high' | 'normal' | 'low'
+                  Sets X-Priority, Importance, and X-MSMail-Priority headers.
+                  Affects how Android Mail, iOS Mail, and Outlook display the email.
     """
     failure_reasons = []
 
     # 1. Gmail API — primary provider (HTTPS/443, never blocked)
     if settings.GMAIL_CLIENT_ID and settings.GMAIL_CLIENT_SECRET and settings.GMAIL_REFRESH_TOKEN:
-        res = await asyncio.to_thread(_send_via_gmail_api_sync, to_email, subject, html_content, text_content)
+        res = await asyncio.to_thread(_send_via_gmail_api_sync, to_email, subject, html_content, text_content, priority)
         if res.get("status") == "sent":
             return res
         failure_reasons.append(f"Gmail API failed: {res.get('error', 'unknown')}")
@@ -350,7 +383,7 @@ async def send_email(to_email: str, subject: str, html_content: str, text_conten
 
     # 2. SMTP fallback (works locally, blocked on Render free tier)
     if settings.SMTP_PASSWORD:
-        res = await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_content, text_content)
+        res = await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_content, text_content, priority)
         if res.get("status") == "sent":
             return res
         failure_reasons.append(f"SMTP failed: {res.get('error', 'unknown')}")
@@ -422,7 +455,7 @@ https://greenxchange.org
 """
 
     html = _get_base_template(content_html, preview_text="Please verify your email to activate your GreenXchange account.", icon="✅")
-    return await send_email(to_email, "Verify your GreenXchange account", html, plain_text)
+    return await send_email(to_email, "Verify your GreenXchange account", html, plain_text, priority="high")
 
 async def send_password_reset_email(to_email: str, name: str, token: str, base_url: str = None):
     """Dispatches Password Reset link with clean corporate styling."""
@@ -464,7 +497,7 @@ https://greenxchange.org
 """
 
     html = _get_base_template(content_html, preview_text="Reset instructions for your GreenXchange password.", icon="🔑")
-    return await send_email(to_email, "Reset your GreenXchange password", html, plain_text)
+    return await send_email(to_email, "Reset your GreenXchange password", html, plain_text, priority="high")
 
 async def send_org_payment_request_email(to_email: str, citizen_name: str, org_name: str, amount_gxc: float, description: str, base_url: str = None):
     """Notifies citizen of incoming payment request issued by an authorized Organization."""
@@ -513,7 +546,7 @@ GreenXchange Environmental Network
 """
 
     html = _get_base_template(content_html, preview_text=f"Payment request of {amount_gxc:.1f} GXC from {org_name}.", icon="💳")
-    return await send_email(to_email, f"Action Required: Payment request from {org_name}", html, plain_text)
+    return await send_email(to_email, f"Action Required: Payment request from {org_name}", html, plain_text, priority="high")
 
 async def send_weekly_digest_email(to_email: str, name: str, stats: dict):
     """Dispatches Weekly Eco-Activity Summary digest email."""
@@ -568,4 +601,4 @@ GreenXchange Environmental Network
 """
 
     html = _get_base_template(content_html, preview_text=f"Weekly Eco Digest: {plants_count} active plants, {carbon_offset_kg:.1f} kg CO2 sequestered.", icon="📊")
-    return await send_email(to_email, "Your GreenXchange Weekly Environmental Digest", html, plain_text)
+    return await send_email(to_email, "Your GreenXchange Weekly Environmental Digest", html, plain_text, priority="low")
