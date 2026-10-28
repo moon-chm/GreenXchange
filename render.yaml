@@ -13,7 +13,7 @@ services:
       - key: NODE_VERSION
         value: 20.10.0
       - key: NEXT_PUBLIC_API_URL
-        value: https://greenxchange-backend.onrender.com
+        value: https://greenxchange-backend-dy79.onrender.com
 
   # -------------------------------------------------------------
   # 2. FastAPI Backend
@@ -59,7 +59,7 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: FRONTEND_URL
-        value: https://greenxchange-frontend.onrender.com
+        value: https://greenxchange-frontend-dtf0.onrender.com
 
       # ── AI / Groq ─────────────────────────────────────────────
       - key: GROQ_API_KEY

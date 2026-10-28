@@ -31,6 +31,12 @@ if db_url:
     parsed = urllib.parse.urlparse(db_url)
     query_dict = urllib.parse.parse_qs(parsed.query)
 
+    # Preserve TLS for hosted databases while allowing local Docker Postgres.
+    hostname = (parsed.hostname or "").lower()
+    use_ssl = hostname not in {"", "localhost", "127.0.0.1", "::1", "db", "postgres"}
+    if query_dict.get("sslmode", [""])[0].lower() in {"require", "verify-ca", "verify-full"}:
+        use_ssl = True
+
     for param in ["sslmode", "channel_binding"]:
         query_dict.pop(param, None)
 

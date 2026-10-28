@@ -15,7 +15,7 @@ export const getBaseUrl = (): string => {
   // Client-side: detect onrender.com deployment
   if (typeof window !== 'undefined') {
     if (window.location.hostname.includes('onrender.com')) {
-      return 'https://greenxchange-backend.onrender.com';
+      return 'https://greenxchange-backend-dy79.onrender.com';
     }
     // Local development — use relative URL (Next.js proxy or direct)
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
@@ -23,7 +23,7 @@ export const getBaseUrl = (): string => {
     }
   }
 
-  return 'https://greenxchange-backend.onrender.com';
+  return 'https://greenxchange-backend-dy79.onrender.com';
 };
 
 const api = axios.create({

@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     # Resend API fallback
     RESEND_API_KEY: str = ""
 
-    FRONTEND_URL: str = "https://greenxchange-frontend.onrender.com"
+    FRONTEND_URL: str = "https://greenxchange-frontend-dtf0.onrender.com"
 
     # Computer Vision AI Models
     TREE_MODEL_PATH: str = ""

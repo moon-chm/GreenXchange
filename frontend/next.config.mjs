@@ -32,7 +32,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: blob: https:",
-              "connect-src 'self' https://greenxchange-backend.onrender.com https://*.onrender.com wss:",
+              "connect-src 'self' https://greenxchange-backend-dy79.onrender.com https://*.onrender.com wss:",
               "frame-ancestors 'none'",
             ].join("; "),
           },

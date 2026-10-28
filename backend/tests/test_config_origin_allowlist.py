@@ -12,7 +12,7 @@ def test_accepts_configured_frontend_url():
 
 
 def test_accepts_greenxchange_onrender_subdomains():
-    assert settings.is_allowed_origin("https://greenxchange-frontend.onrender.com") is True
+    assert settings.is_allowed_origin("https://greenxchange-frontend-dtf0.onrender.com") is True
     assert settings.is_allowed_origin("https://greenxchange-staging.onrender.com") is True
 
 
@@ -27,10 +27,10 @@ def test_rejects_unrelated_domain():
 
 
 def test_rejects_domain_suffix_bypass_attempt():
-    # "https://greenxchange-frontend.onrender.com.evil.com" starts with an
+    # "https://greenxchange-frontend-dtf0.onrender.com.evil.com" starts with an
     # allowed-looking prefix but is a completely different domain — a regex
     # without a trailing anchor would wrongly accept this.
-    assert settings.is_allowed_origin("https://greenxchange-frontend.onrender.com.evil.com") is False
+    assert settings.is_allowed_origin("https://greenxchange-frontend-dtf0.onrender.com.evil.com") is False
 
 
 def test_rejects_lookalike_domain_without_dash():
