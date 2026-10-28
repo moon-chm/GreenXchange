@@ -133,7 +133,11 @@ async def run_async_migrations() -> None:
         connect_args=connect_args,
     )
 
-    async with connectable.connect() as connection:
+    # Start the transaction before do_run_migrations() inspects the schema.
+    # Those inspection queries autobegin a transaction; an externally managed
+    # transaction ensures Alembic's DDL and version updates are committed when
+    # this context exits instead of being rolled back on connection close.
+    async with connectable.begin() as connection:
         await connection.run_sync(do_run_migrations)
 
     await connectable.dispose()
