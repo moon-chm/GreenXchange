@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useReducedMotion, type HTMLMotionProps } from "framer-motion";
+import * as Dialog from "@radix-ui/react-dialog";
 import api from "@/lib/axios";
 import { extractErrorMessage } from "@/lib/utils";
 
@@ -106,6 +107,14 @@ export default function PlantRegistrationModal({
   const [isGpsLoading, setIsGpsLoading] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const imageUploadIdRef = useRef(0);
+  const photoFileRef = useRef<File | null>(null);
+  const submittingRef = useRef(false);
+  const gpsRequestRef = useRef(0);
+
+  useEffect(() => () => {
+    imageUploadIdRef.current += 1;
+    gpsRequestRef.current += 1;
+  }, []);
 
   const [speciesList, setSpeciesList] = useState<SpeciesOption[]>([]);
   const [customSpeciesName, setCustomSpeciesName] = useState("");
@@ -143,6 +152,7 @@ export default function PlantRegistrationModal({
   );
 
   const handleGpsAutoFill = useCallback(() => {
+    const requestId = ++gpsRequestRef.current;
     if (!navigator.geolocation) {
       setError("Geolocation is not supported by your browser.");
       return;
@@ -151,6 +161,7 @@ export default function PlantRegistrationModal({
     setError(null);
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (requestId !== gpsRequestRef.current) return;
         setFormData((prev) => ({
           ...prev,
           latitude: position.coords.latitude.toFixed(6),
@@ -159,6 +170,7 @@ export default function PlantRegistrationModal({
         setIsGpsLoading(false);
       },
       (err) => {
+        if (requestId !== gpsRequestRef.current) return;
         console.warn("GPS auto-fill error:", err);
         setError("Unable to retrieve GPS location. Ensure location permissions are granted.");
         setIsGpsLoading(false);
@@ -168,8 +180,13 @@ export default function PlantRegistrationModal({
   }, []);
 
   const handleNext = () => {
+    if (submittingRef.current) return;
     setError(null);
     if (step === 1) {
+      if (!formData.planting_date || !Number.isFinite(Date.parse(formData.planting_date))) {
+        setError("Please enter a valid planting date.");
+        return;
+      }
       if (!customSpeciesName.trim()) {
         setError("Please enter your plant name.");
         return;
@@ -207,6 +224,8 @@ export default function PlantRegistrationModal({
   };
 
   const handleSubmit = useCallback(async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setIsSubmitting(true);
     setError(null);
     try {
@@ -255,11 +274,16 @@ export default function PlantRegistrationModal({
     } catch (err: unknown) {
       setError(extractErrorMessage(err, "Registration failed. Please try again."));
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }, [formData, customSpeciesName, speciesList, onSuccess]);
 
   const handleClose = useCallback(() => {
+    if (submittingRef.current) return;
+    photoFileRef.current = null;
+    gpsRequestRef.current += 1;
+    setIsGpsLoading(false);
     imageUploadIdRef.current += 1;
     setStep(1);
     setError(null);
@@ -279,23 +303,33 @@ export default function PlantRegistrationModal({
   }, [onClose]);
 
 
-  const overlayAnim: HTMLMotionProps<"div"> = shouldReduceMotion
-    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
-    : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } };
+  const uploadPhoto = (file: File, previewUrl: string) => {
+      photoFileRef.current = file;
+                      const uploadId = ++imageUploadIdRef.current;
+                      setImagePreview(previewUrl);
+                      setFormData((prev) => ({ ...prev, image_url: "" }));
+                      setIsImageUploading(true);
+                      setError(null);
 
-  const modalAnim: HTMLMotionProps<"div"> = shouldReduceMotion
-    ? {
-        initial: { opacity: 0 },
-        animate: { opacity: 1 },
-        exit: { opacity: 0 },
-        transition: { duration: 0.15 },
-      }
-    : {
-        initial: { opacity: 0, scale: 0.94 },
-        animate: { opacity: 1, scale: 1 },
-        exit: { opacity: 0, scale: 0.94 },
-        transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
-      };
+                      const body = new FormData();
+                      body.append("image", file);
+                      api.post("/plants/upload-image", body, { headers: { "Content-Type": undefined } })
+                        .then((res) => {
+                          if (!res.data?.image_url) throw new Error("The photo upload did not return a saved image.");
+                          if (imageUploadIdRef.current === uploadId) {
+                            setFormData((prev) => ({ ...prev, image_url: res.data.image_url }));
+                          }
+                        })
+                        .catch((uploadError: unknown) => {
+                          if (imageUploadIdRef.current !== uploadId) return;
+                          setError(extractErrorMessage(uploadError, "Photo upload failed. Please retry the upload."));
+
+                        })
+                        .finally(() => {
+                          if (imageUploadIdRef.current === uploadId) setIsImageUploading(false);
+                        });
+
+  };
 
   const stepAnim: HTMLMotionProps<"div"> = shouldReduceMotion
     ? {
@@ -312,35 +346,23 @@ export default function PlantRegistrationModal({
       };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          key="overlay"
-          {...overlayAnim}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-canopy/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) handleClose();
-          }}
-        >
-          <motion.div
-            key="modal"
-            {...modalAnim}
-            className="bg-parchment rounded-2xl p-6 max-w-lg w-full mx-4 shadow-panel relative"
-            onClick={(e) => e.stopPropagation()}
-          >
+    <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-canopy/50 backdrop-blur-sm z-50" />
+        <Dialog.Content aria-describedby={undefined} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-parchment rounded-2xl p-5 sm:p-6 max-w-lg w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-panel">
             {/* Header */}
             <div className="flex items-start justify-between mb-5">
               <div>
-                <h2 className="font-display text-xl font-semibold text-canopy">
+                <Dialog.Title className="font-display text-xl font-semibold text-canopy">
                   Register New Plant
-                </h2>
+                </Dialog.Title>
                 <p className="text-sm text-canopy/60 mt-0.5">
                   Step {step} of {TOTAL_STEPS}
                 </p>
               </div>
               <button
                 onClick={handleClose}
+                disabled={isSubmitting}
                 className="p-1.5 rounded-xl text-canopy/50 hover:text-canopy hover:bg-sage/20 transition-colors"
                 aria-label="Close modal"
               >
@@ -443,7 +465,7 @@ export default function PlantRegistrationModal({
                       className={inputClass}
                     />
                   </div>
-                  <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <div className="flex-1">
                       <label htmlFor="space_type" className={labelClass}>
                         Space Type
@@ -482,53 +504,25 @@ export default function PlantRegistrationModal({
                 <motion.div key="step2" {...stepAnim} className="flex flex-col gap-3">
                   <LiveCameraCapture
                     label="Live Plant Registration Photo"
-                    sublabel="Strictly live camera capture required. Align the plant/tree inside the target frame."
+                    sublabel="Keep the whole plant in view and use good lighting."
                     initialPreview={imagePreview}
-                    onCapture={(file, previewUrl) => {
-                      const uploadId = ++imageUploadIdRef.current;
-                      setImagePreview(previewUrl);
-                      setFormData((prev) => ({ ...prev, image_url: "" }));
-                      setIsImageUploading(true);
-                      setError(null);
-
-                      const previewReader = new FileReader();
-                      previewReader.onload = () => {
-                        if (typeof previewReader.result === "string") setImagePreview(previewReader.result);
-                      };
-                      previewReader.readAsDataURL(file);
-
-                      const body = new FormData();
-                      body.append("image", file);
-                      api.post("/plants/upload-image", body, { headers: { "Content-Type": undefined } })
-                        .then((res) => {
-                          if (!res.data?.image_url) throw new Error("The photo upload did not return a saved image.");
-                          if (imageUploadIdRef.current === uploadId) {
-                            setFormData((prev) => ({ ...prev, image_url: res.data.image_url }));
-                          }
-                        })
-                        .catch((uploadError: unknown) => {
-                          if (imageUploadIdRef.current !== uploadId) return;
-                          setError(extractErrorMessage(uploadError, "Photo upload failed. Please try capturing it again."));
-                          setImagePreview(null);
-                        })
-                        .finally(() => {
-                          if (imageUploadIdRef.current === uploadId) setIsImageUploading(false);
-                        });
-                    }}
+                    onCapture={uploadPhoto}
                     onClear={() => {
+                      photoFileRef.current = null;
                       imageUploadIdRef.current += 1;
                       setIsImageUploading(false);
                       setImagePreview(null);
                       setFormData((prev) => ({ ...prev, image_url: "" }));
                     }}
                   />
-                  {isImageUploading && <p className="text-xs text-canopy/60">Saving photo securely…</p>}
+                  {!isImageUploading && !formData.image_url && imagePreview && <button type="button" onClick={() => { if (photoFileRef.current) uploadPhoto(photoFileRef.current, imagePreview); }} className="min-h-11 rounded-xl border border-fern text-fern font-semibold">Retry photo upload</button>}
+                  {isImageUploading && <p role="status" className="text-xs text-canopy/60">Saving photo securely…</p>}
                 </motion.div>
               )}
 
               {step === 3 && (
                 <motion.div key="step3" {...stepAnim} className="flex flex-col gap-4">
-                  <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <div className="flex-1">
                       <label htmlFor="latitude" className={labelClass}>
                         Latitude <span className="text-red-500">*</span>
@@ -635,6 +629,7 @@ export default function PlantRegistrationModal({
             {/* Error message */}
             {error && (
               <motion.p
+                role="alert"
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2"
@@ -648,6 +643,7 @@ export default function PlantRegistrationModal({
               {step < 4 && step > 1 && (
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => {
                     setError(null);
                     setStep((s) => s - 1);
@@ -683,10 +679,9 @@ export default function PlantRegistrationModal({
                 </motion.button>
               )}
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

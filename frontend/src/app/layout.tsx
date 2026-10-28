@@ -47,11 +47,11 @@ export const metadata: Metadata = {
   authors: [{ name: "GreenXchange Team" }],
   creator: "GreenXchange",
   publisher: "GreenXchange",
-  metadataBase: new URL("http://localhost"),
+  metadataBase: new URL("https://greenxchange-frontend-dtf0.onrender.com"),
   openGraph: {
     type: "website",
     locale: "en_IN",
-    url: "http://localhost",
+    url: "https://greenxchange-frontend-dtf0.onrender.com",
     siteName: "GreenXchange",
     title: "GreenXchange — Environmental Intelligence Platform",
     description:

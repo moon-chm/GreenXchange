@@ -2,8 +2,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, LayoutDashboard, Leaf, Sparkles, Coins, Users, Newspaper, LogOut, Building2 } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { Menu, X, LayoutDashboard, Leaf, Sparkles, Coins, Users, Newspaper, LogOut } from "lucide-react";
 import LeafIcon from "@/components/icons/LeafIcon";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ export default function TopBar() {
   const { user, logout } = useAuth();
 
   return (
-    <>
+    <Dialog.Root open={open} onOpenChange={setOpen}>
       <header className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-canopy flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-fern flex items-center justify-center">
@@ -31,32 +31,18 @@ export default function TopBar() {
           </div>
           <span className="font-display text-base font-semibold text-parchment">GreenXchange</span>
         </div>
-        <button
-          onClick={() => setOpen(true)}
-          className="w-9 h-9 flex items-center justify-center rounded-lg text-parchment/70 hover:text-parchment hover:bg-forest/50 transition-colors"
+        <Dialog.Trigger asChild><button
+          aria-label="Open navigation menu"
+          className="w-11 h-11 flex items-center justify-center rounded-lg text-parchment/70 hover:text-parchment hover:bg-forest/50 transition-colors"
         >
           <Menu size={20} />
-        </button>
+        </button></Dialog.Trigger>
       </header>
 
-      {/* Drawer overlay */}
-      <AnimatePresence>
-        {open && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setOpen(false)}
-              className="fixed inset-0 bg-canopy/60 z-50 lg:hidden"
-            />
-            <motion.div
-              initial={{ x: "-100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "-100%" }}
-              transition={{ type: "spring", damping: 28, stiffness: 260 }}
-              className="fixed top-0 left-0 h-full w-72 bg-canopy z-50 flex flex-col lg:hidden"
-            >
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-canopy/60 z-50" />
+        <Dialog.Content aria-describedby={undefined} className="fixed top-0 left-0 h-dvh w-72 max-w-[90vw] bg-canopy z-50 flex flex-col overflow-y-auto">
+          <Dialog.Title className="sr-only">Navigation menu</Dialog.Title>
               <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-fern flex items-center justify-center">
@@ -64,16 +50,16 @@ export default function TopBar() {
                   </div>
                   <span className="font-display text-base font-semibold text-parchment">GreenXchange</span>
                 </div>
-                <button onClick={() => setOpen(false)} className="text-parchment/60 hover:text-parchment">
+                <Dialog.Close asChild><button aria-label="Close navigation menu" className="min-h-11 min-w-11 flex items-center justify-center text-parchment/60 hover:text-parchment">
                   <X size={20} />
-                </button>
+                </button></Dialog.Close>
               </div>
 
               <nav className="flex-1 py-4 px-3 space-y-0.5">
                 {navItems.map(({ href, icon: Icon, label }) => {
                   const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
                   return (
-                    <Link key={href} href={href} onClick={() => setOpen(false)}>
+                    <Link key={href} href={href} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}>
                       <div className={cn(
                         "flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors",
                         active
@@ -105,10 +91,8 @@ export default function TopBar() {
                   <LogOut size={15} /> Sign out
                 </button>
               </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

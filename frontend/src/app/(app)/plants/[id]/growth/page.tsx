@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import api from "@/lib/axios";
-import { MapPin, Loader2, CheckCircle, ArrowLeft, Sparkles, ShieldAlert, HeartPulse, TreePine, Award } from "lucide-react";
+import { MapPin, Loader2, CheckCircle, ArrowLeft, ShieldAlert, HeartPulse, TreePine, Award } from "lucide-react";
 import { fadeUp } from "@/lib/motion";
 import { extractErrorMessage } from "@/lib/utils";
 import LiveCameraCapture from "@/components/shared/LiveCameraCapture";
@@ -27,9 +27,12 @@ export default function GrowthUpdatePage() {
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [location, setLocation] = useState<{ lat: number; lng: number }>({ lat: 28.6139, lng: 77.2090 });
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locStatus, setLocStatus] = useState("Acquiring GPS coordinates...");
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
+  const locationRequestRef = useRef(0);
+  const [error, setError] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<{
     status: string;
     growth_stage?: string;
@@ -38,27 +41,32 @@ export default function GrowthUpdatePage() {
   } | null>(null);
 
   const requestLocation = useCallback(() => {
+    const requestId = ++locationRequestRef.current;
+    setLocation(null);
     setLocStatus("Requesting location access...");
     if (typeof window !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          if (requestId !== locationRequestRef.current) return;
           setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-          setLocStatus("GPS Verified & Locked");
+          setLocStatus("Location acquired");
         },
         (err) => {
+          if (requestId !== locationRequestRef.current) return;
           console.warn("GPS error:", err);
-          setLocStatus("Using default/approximate location");
+          setLocStatus("Location unavailable. Allow location access and try again.");
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      setLocStatus("Using default/approximate location");
+      setLocStatus("Location unavailable. Allow location access and try again.");
     }
   }, []);
 
   useEffect(() => {
     requestLocation();
-  }, []);
+    return () => { locationRequestRef.current += 1; };
+  }, [requestLocation]);
 
   const handleCapture = useCallback((capturedFile: File, previewUrl: string) => {
     setFile(capturedFile);
@@ -73,12 +81,15 @@ export default function GrowthUpdatePage() {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!file) {
-        alert("Please capture or select a photo of your plant first.");
+      if (submittingRef.current) return;
+      if (!file || !location) {
+        setError("Add a plant photo and enable location before submitting.");
         return;
       }
 
-      const activeCoords = location || { lat: 28.6139, lng: 77.2090 };
+      submittingRef.current = true;
+      const activeCoords = location;
+      setError(null);
       setLoading(true);
       const formData = new FormData();
       formData.append("image", file);
@@ -93,35 +104,29 @@ export default function GrowthUpdatePage() {
         });
 
         setSuccessResult({
-          status: res?.data?.verification_status || "VERIFIED",
+          status: res?.data?.verification_status || "PENDING",
           growth_stage: res?.data?.growth_stage,
           confidence_score: res?.data?.confidence_score,
           analysis: res?.data?.analysis,
         });
 
-        setTimeout(() => {
-          router.push(`/plants`);
-        }, 3600);
-      } catch (err: any) {
-        const detailMsg = err?.response?.data?.detail;
-        const msg =
-          typeof detailMsg === "string"
-            ? detailMsg
-            : extractErrorMessage(err, "Failed to submit growth update. Please ensure a live tree is captured.");
-        alert(msg);
+      } catch (err: unknown) {
+        setError(extractErrorMessage(err, "Could not submit your update. Please try again."));
+      } finally {
+        submittingRef.current = false;
         setLoading(false);
       }
     },
-    [file, location, id, router]
+    [file, location, id]
   );
 
   const containerAnim = shouldReduce ? {} : fadeUp;
 
   if (successResult) {
-    const isVerified = successResult.status === "VERIFIED";
+    const isVerified = successResult.status.toUpperCase() === "VERIFIED";
     const analysis = successResult.analysis;
-    const healthStatus = analysis?.health_status || "Healthy";
-    const isHealthy = analysis?.is_healthy ?? true;
+    const healthStatus = analysis?.health_status || "Not assessed";
+    const isHealthy = analysis?.is_healthy === true;
 
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
@@ -136,10 +141,10 @@ export default function GrowthUpdatePage() {
 
           <div>
             <h2 className="font-display text-2xl font-bold text-canopy">
-              {isVerified ? "Growth Update Verified!" : "Update Submitted for Review"}
+              {isVerified ? "Growth Update Verified!" : successResult.status.toUpperCase() === "REJECTED" ? "Update Not Verified" : "Update Submitted for Review"}
             </h2>
             <p className="text-sm text-canopy/70 mt-1">
-              Evaluated with Dual PyTorch ResNet18 AI Models & GPS Proof-of-Presence.
+              {analysis?.summary_reason || "Your update has been saved. Review the results below."}
             </p>
           </div>
 
@@ -151,7 +156,7 @@ export default function GrowthUpdatePage() {
                 <span>Tree / Plant Detection</span>
               </div>
               <span className="text-xs font-mono font-bold text-fern">
-                {analysis?.tree_confidence ? `${(analysis.tree_confidence * 100).toFixed(1)}% Confirmed` : "Verified"}
+                {typeof analysis?.tree_confidence === "number" ? `${(analysis.tree_confidence * 100).toFixed(1)}% confidence` : "Not assessed"}
               </span>
             </div>
 
@@ -168,18 +173,15 @@ export default function GrowthUpdatePage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-semibold text-canopy">
                 <Award className="w-4 h-4 text-amber-500" />
-                <span>Reward Credited</span>
+                <span>Rewards</span>
               </div>
               <span className="text-xs font-bold text-fern">
-                +10 GXC Points
+                {isVerified ? "Check your rewards balance" : "Not confirmed"}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-canopy/50">
-            <div className="w-4 h-4 border-2 border-fern/30 border-t-fern rounded-full animate-spin" />
-            <span>Redirecting to portfolio...</span>
-          </div>
+          <button type="button" onClick={() => router.push("/plants")} className="min-h-11 rounded-xl bg-fern px-5 py-3 text-white font-semibold">Back to My Plants</button>
         </motion.div>
       </div>
     );
@@ -206,7 +208,7 @@ export default function GrowthUpdatePage() {
             Log Growth Update
           </h1>
           <p className="text-canopy/60 text-xs sm:text-sm mt-0.5">
-            Capture a live photo to verify growth & earn +10 GXC tokens.
+            Add a recent photo and your location to record plant growth.
           </p>
         </div>
       </motion.div>
@@ -222,7 +224,7 @@ export default function GrowthUpdatePage() {
         >
           <LiveCameraCapture
             label="Live Plant Growth Camera"
-            sublabel="Capture a clear live photo of the tree/foliage. Gallery uploads are strictly disabled."
+            sublabel="Take a clear photo with the plant and foliage in view."
             initialPreview={preview}
             onCapture={handleCapture}
             onClear={handleClear}
@@ -264,6 +266,7 @@ export default function GrowthUpdatePage() {
           </div>
         </motion.div>
 
+        {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
         {/* Action Button */}
         <motion.button
           type="submit"
@@ -274,7 +277,7 @@ export default function GrowthUpdatePage() {
           {loading ? (
             <span className="flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Running Dual ResNet18 AI Analysis & Verifying…
+              Submitting and checking your photo…
             </span>
           ) : (
             "Submit Live Growth Update"

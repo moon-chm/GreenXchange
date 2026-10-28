@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Camera, RefreshCw, Check, AlertCircle, SwitchCamera, ShieldCheck, Sparkles } from "lucide-react";
+import { validatePhoto } from "@/lib/photos";
 
 interface LiveCameraCaptureProps {
   onCapture: (file: File, previewUrl: string) => void;
@@ -17,13 +18,16 @@ export default function LiveCameraCapture({
   initialPreview,
   onClear,
   label = "Live Plant Camera",
-  sublabel = "Strictly live camera capture enforced. Gallery uploads are disabled.",
+  sublabel = "Use a clear, well-lit photo with the whole plant in view.",
 }: LiveCameraCaptureProps) {
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [preview, setPreview] = useState<string | null>(initialPreview || null);
   const [flash, setFlash] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const capturePendingRef = useRef(false);
+  const cameraRequestRef = useRef(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -32,6 +36,8 @@ export default function LiveCameraCapture({
 
   // Stop active video stream
   const stopStream = useCallback(() => {
+    cameraRequestRef.current += 1;
+    capturePendingRef.current = false;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -46,6 +52,8 @@ export default function LiveCameraCapture({
 
     // Stop existing stream first
     stopStream();
+    const requestId = cameraRequestRef.current;
+    setIsCapturing(false);
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -62,14 +70,20 @@ export default function LiveCameraCapture({
       };
 
       const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (cameraRequestRef.current !== requestId) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = mediaStream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play().catch(() => {});
+        await videoRef.current.play();
       }
-      setIsInitializing(false);
+      if (cameraRequestRef.current === requestId) setIsInitializing(false);
     } catch (err: unknown) {
+      if (cameraRequestRef.current !== requestId) return;
+      stopStream();
       console.warn("WebRTC camera stream error:", err);
       setIsInitializing(false);
 
@@ -93,12 +107,6 @@ export default function LiveCameraCapture({
     };
   }, [preview, facingMode, startCamera, stopStream]);
 
-  useEffect(() => {
-    return () => {
-      if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
-    };
-  }, [preview]);
-
   // Handle camera switch
   const handleToggleFacingMode = () => {
     const newMode = facingMode === "environment" ? "user" : "environment";
@@ -107,35 +115,47 @@ export default function LiveCameraCapture({
 
   // Capture frame from live video feed
   const captureFrame = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current || capturePendingRef.current) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+      setCameraError("The camera is not ready yet. Please retry the camera before taking a photo.");
+      return;
+    }
+    capturePendingRef.current = true;
+    setIsCapturing(true);
+    const requestId = cameraRequestRef.current;
 
     // Flash animation
     setFlash(true);
     setTimeout(() => setFlash(false), 200);
 
-    const width = video.videoWidth || 1280;
-    const height = video.videoHeight || 720;
+    const width = video.videoWidth;
+    const height = video.videoHeight;
     canvas.width = width;
     canvas.height = height;
 
     // Draw video frame to canvas
     ctx.drawImage(video, 0, 0, width, height);
+    const previewUrl = canvas.toDataURL("image/jpeg", 0.92);
 
     canvas.toBlob(
       (blob) => {
+        if (cameraRequestRef.current !== requestId) return;
+        capturePendingRef.current = false;
+        setIsCapturing(false);
         if (blob) {
           const file = new File([blob], `live_capture_${Date.now()}.jpg`, {
             type: "image/jpeg",
           });
-          const url = URL.createObjectURL(blob);
-          setPreview(url);
+          setPreview(previewUrl);
           stopStream();
-          onCapture(file, url);
+          onCapture(file, previewUrl);
+        } else {
+          setCameraError("The photo could not be captured. Please retry the camera.");
         }
       },
       "image/jpeg",
@@ -146,11 +166,25 @@ export default function LiveCameraCapture({
   // Fallback native camera file input handler (strictly capture="environment")
   const handleNativeCameraFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (file) {
-      const url = URL.createObjectURL(file);
-      setPreview(url);
+      const validationError = validatePhoto(file);
+      if (validationError) {
+        setCameraError(validationError);
+        return;
+      }
       stopStream();
-      onCapture(file, url);
+      const requestId = cameraRequestRef.current;
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (cameraRequestRef.current !== requestId || typeof reader.result !== "string") return;
+        setPreview(reader.result);
+        onCapture(file, reader.result);
+      };
+      reader.onerror = () => {
+        if (cameraRequestRef.current === requestId) setCameraError("This photo could not be opened. Please take another photo.");
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -163,7 +197,7 @@ export default function LiveCameraCapture({
   return (
     <div className="w-full flex flex-col gap-3">
       {/* Header Info */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="flex items-center gap-1.5 text-xs font-semibold text-canopy uppercase tracking-wider">
             <Camera className="w-3.5 h-3.5 text-fern" />
@@ -173,7 +207,7 @@ export default function LiveCameraCapture({
         </div>
         <div className="flex items-center gap-1 text-[10px] font-medium bg-fern/10 text-fern px-2 py-0.5 rounded-full border border-fern/20">
           <ShieldCheck className="w-3 h-3" />
-          <span>Strict Live Mode</span>
+          <span>Plant photo</span>
         </div>
       </div>
 
@@ -190,7 +224,7 @@ export default function LiveCameraCapture({
         <input
           ref={nativeCameraInputRef}
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp"
           capture="environment"
           onChange={handleNativeCameraFile}
           className="hidden"
@@ -220,7 +254,7 @@ export default function LiveCameraCapture({
             {/* Live Stamp Badge */}
             <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 flex items-center gap-1.5 text-[11px] text-white">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Live Captured</span>
+              <span>Photo preview</span>
             </div>
 
             {/* Retake Control Overlay */}
@@ -235,7 +269,7 @@ export default function LiveCameraCapture({
               </button>
               <div className="py-2.5 px-4 bg-fern text-white text-xs font-semibold rounded-xl shadow-md flex items-center justify-center gap-1.5">
                 <Check className="w-3.5 h-3.5" />
-                Confirmed
+                Ready
               </div>
             </div>
           </div>
@@ -288,7 +322,9 @@ export default function LiveCameraCapture({
               <button
                 type="button"
                 onClick={handleToggleFacingMode}
-                className="p-2 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-lg border border-white/10 text-white hover:text-fern transition-all"
+                disabled={isInitializing || isCapturing}
+                aria-label="Switch front or rear camera"
+                className="min-h-11 min-w-11 p-2 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-lg border border-white/10 text-white hover:text-fern transition-all disabled:opacity-50"
                 title="Switch Camera (Front/Rear)"
               >
                 <SwitchCamera className="w-3.5 h-3.5" />
@@ -301,8 +337,9 @@ export default function LiveCameraCapture({
               <motion.button
                 type="button"
                 onClick={captureFrame}
+                disabled={isInitializing || isCapturing || !!cameraError}
                 whileTap={{ scale: 0.92 }}
-                className="w-14 h-14 rounded-full border-4 border-white/80 bg-fern hover:bg-forest text-white flex items-center justify-center shadow-xl hover:scale-105 transition-transform"
+                className="w-14 h-14 rounded-full border-4 border-white/80 bg-fern hover:bg-forest text-white flex items-center justify-center shadow-xl transition-transform disabled:opacity-50"
                 aria-label="Capture Live Photo"
               >
                 <div className="w-10 h-10 rounded-full border-2 border-white/40 bg-white/20 flex items-center justify-center">
@@ -313,7 +350,7 @@ export default function LiveCameraCapture({
 
             {/* Camera Error / Fallback Card */}
             {cameraError && (
-              <div className="absolute inset-0 bg-canopy/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-30 gap-3">
+              <div role="alert" className="absolute inset-0 bg-canopy/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-30 gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
                   <AlertCircle className="w-5 h-5" />
                 </div>
@@ -347,7 +384,7 @@ export default function LiveCameraCapture({
       {/* Anti-Fraud Disclaimer */}
       <div className="flex items-center gap-1.5 text-[10px] text-canopy/50 justify-center">
         <ShieldCheck className="w-3 h-3 text-fern" />
-        <span>Verified with ResNet18 Tree & Health AI Models. Live capture strictly required.</span>
+        <span>JPEG, PNG or WebP, up to 10 MB. Verification results appear after submission.</span>
       </div>
     </div>
   );

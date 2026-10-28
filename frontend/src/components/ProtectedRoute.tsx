@@ -1,59 +1,16 @@
 "use client";
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
-import { useState, useCallback, useEffect, ReactNode } from 'react';
-import CinematicIntroLoader from '@/components/shared/CinematicIntroLoader';
-
-const INTRO_SHOWN_KEY = 'gx_intro_shown';
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
+import { useEffect, ReactNode } from "react";
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
-  // Play the full cinematic intro once per browser tab session only — without
-  // this, every hard refresh or deep link into the app (not just first login)
-  // forced a mandatory 5s wait before content, or even a login redirect, showed.
-  const [animationComplete, setAnimationComplete] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      return sessionStorage.getItem(INTRO_SHOWN_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
-
-  const handleFinish = useCallback(() => {
-    try {
-      sessionStorage.setItem(INTRO_SHOWN_KEY, '1');
-    } catch {
-      // Private browsing / storage disabled — safe to ignore, just replays next time.
-    }
-    setAnimationComplete(true);
-    if (!loading && !user) {
-      router.push('/login');
-    }
-  }, [loading, user, router]);
-
   useEffect(() => {
-    if (!loading && !user && animationComplete) {
-      router.replace('/login');
-    }
-  }, [loading, user, animationComplete, router]);
-
-  // Play the full-screen radial center-to-edge botanical bloom
-  if (!animationComplete) {
-    return (
-      <CinematicIntroLoader
-        minDisplayTime={5000}
-        autoDismiss={true}
-        onComplete={handleFinish}
-      />
-    );
-  }
-
-  // After animation finishes: if not logged in, navigate immediately without any second loader delay
+    if (!loading && !user) router.replace("/login");
+  }, [loading, user, router]);
   if (loading || !user) {
-    return null;
+    return <div role="status" className="min-h-dvh flex items-center justify-center text-canopy bg-parchment"><p>{loading ? "Loading your account…" : "Taking you to sign in…"}</p></div>;
   }
-
   return <>{children}</>;
 }

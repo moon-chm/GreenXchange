@@ -153,3 +153,16 @@ body {
   .border-forest    { border-color: var(--color-forest); }
   .border-canopy    { border-color: var(--color-canopy); }
 }
+
+/* Respect motion preferences and prevent mobile input focus from zooming the page. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+@media (max-width: 640px) {
+  input, select, textarea { font-size: 16px !important; }
+}
