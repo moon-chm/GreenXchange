@@ -26,6 +26,9 @@ def _create_table_if_missing(name: str, *items) -> None:
 
 
 def upgrade() -> None:
+    # Legacy schemas may be stamped past the initial extension migration.
+    op.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto"')
+
     # Older startup create_all deployments may already have some/all of these.
     _add_column_if_missing("users", sa.Column("role", sa.String(50), server_default="USER", nullable=False))
     _add_column_if_missing("users", sa.Column("is_org", sa.Boolean(), server_default=sa.false(), nullable=False))
