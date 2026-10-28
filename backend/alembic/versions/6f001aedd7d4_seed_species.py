@@ -48,7 +48,8 @@ def upgrade() -> None:
     (gen_random_uuid(), 'Devil''s Ivy', 'Epipremnum pinnatum', 'Epipremnum', 'Araceae', 12.0, 15.0, 23.0, 'MEDIUM', 'NONE', 'LOW', 'FAST', ARRAY['INDOOR', 'OUTDOOR_BALCONY']::spacetype[], '15-30C', '6.0-6.5'),
     (gen_random_uuid(), 'Parlor Palm', 'Chamaedorea elegans', 'Chamaedorea', 'Arecaceae', 15.0, 10.0, 12.0, 'NONE', 'NONE', 'LOW', 'SLOW', ARRAY['INDOOR']::spacetype[], '18-27C', '6.0-7.0'),
     (gen_random_uuid(), 'Bird''s Nest Fern', 'Asplenium nidus', 'Asplenium', 'Aspleniaceae', 8.0, 14.0, 16.0, 'NONE', 'NONE', 'MEDIUM', 'MODERATE', ARRAY['INDOOR']::spacetype[], '15-24C', '5.0-6.0'),
-    (gen_random_uuid(), 'Moth Orchid', 'Phalaenopsis', 'Phalaenopsis', 'Orchidaceae', 11.0, 4.0, 7.0, 'NONE', 'LOW', 'HIGH', 'SLOW', ARRAY['INDOOR']::spacetype[], '16-27C', '5.5-6.5');
+    (gen_random_uuid(), 'Moth Orchid', 'Phalaenopsis', 'Phalaenopsis', 'Orchidaceae', 11.0, 4.0, 7.0, 'NONE', 'LOW', 'HIGH', 'SLOW', ARRAY['INDOOR']::spacetype[], '16-27C', '5.5-6.5')
+    ON CONFLICT (scientific_name) DO NOTHING;
     """)
 
 

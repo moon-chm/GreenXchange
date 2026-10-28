@@ -13,15 +13,16 @@ class User(Base):
     location_lat = Column(Float, nullable=True)
     location_lng = Column(Float, nullable=True)
     device_fingerprint = Column(String, nullable=True)
-    is_active = Column(Boolean, default=False)
-    role = Column(String(50), default="USER", nullable=False)
-    is_org = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=False, server_default="false", nullable=False)
+    role = Column(String(50), default="USER", server_default="USER", nullable=False)
+    is_org = Column(Boolean, default=False, server_default="false", nullable=False)
 
     # Email verification & Password reset
-    email_verified = Column(Boolean, default=False, nullable=False)
+    email_verified = Column(Boolean, default=False, server_default="false", nullable=False)
     email_verification_token = Column(String, nullable=True, index=True)
     email_verification_expires_at = Column(DateTime(timezone=True), nullable=True)
     password_reset_token = Column(String, nullable=True, index=True)
     password_reset_expires_at = Column(DateTime(timezone=True), nullable=True)
+    token_version = Column(Integer, default=0, server_default="0", nullable=False)
 
 

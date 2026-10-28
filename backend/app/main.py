@@ -33,10 +33,17 @@ async def _periodic_environment_refresh_loop():
     from app.worker.tasks import get_active_locations
     from app.utils.geo import get_tile_id
     from app.api.environment import _refresh_environment_profile_cache
+    import redis.asyncio as redis
+    redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 
     while True:
         try:
             await asyncio.sleep(1800)  # 30 minutes
+            # One API worker owns a refresh interval even when Compose runs
+            # multiple ASGI workers. Expiry recovers automatically on crash.
+            acquired = await redis_client.set("scheduler:environment-refresh", str(uuid.uuid4()), nx=True, ex=1700)
+            if not acquired:
+                continue
             users = await get_active_locations()
             unique_tiles = {}
             for user in users:
@@ -71,10 +78,14 @@ async def _periodic_weekly_digest_loop():
             if now.weekday() == 0 and now.hour == 9:  # Monday, 9 AM UTC
                 iso_year, iso_week, _ = now.isocalendar()
                 week_key = f"weekly_digest_sent:{iso_year}-W{iso_week}"
-                already_sent = await redis_client.get(week_key)
-                if not already_sent:
-                    await _process_weekly_digests()
-                    await redis_client.setex(week_key, 8 * 86400, "1")
+                acquired = await redis_client.set(week_key, "processing", nx=True, ex=8 * 86400)
+                if acquired:
+                    try:
+                        await _process_weekly_digests()
+                        await redis_client.set(week_key, "sent", ex=8 * 86400)
+                    except Exception:
+                        await redis_client.delete(week_key)
+                        raise
                     logger.info("Weekly eco-activity digest dispatched.")
         except asyncio.CancelledError:
             raise
@@ -82,24 +93,56 @@ async def _periodic_weekly_digest_loop():
             logger.warning(f"Periodic weekly digest loop error: {e}")
         await asyncio.sleep(3600)  # check hourly
 
+
+async def _thingspeak_mqtt_leader_loop():
+    """Keep exactly one MQTT listener active across all API worker processes."""
+    import redis.asyncio as redis
+    from app.services.thingspeak import thingspeak_manager
+
+    client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+    key = "leader:thingspeak-mqtt"
+    token = str(uuid.uuid4())
+    is_leader = False
+    renew_script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end"
+    release_script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end"
+    try:
+        while True:
+            try:
+                if not is_leader:
+                    is_leader = bool(await client.set(key, token, nx=True, ex=60))
+                    if is_leader:
+                        thingspeak_manager.start_mqtt_listener()
+                else:
+                    renewed = await client.eval(renew_script, 1, key, token, 60)
+                    if not renewed:
+                        thingspeak_manager.stop_mqtt_listener()
+                        is_leader = False
+                await asyncio.sleep(20)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("ThingSpeak MQTT leader election failed: %s", type(exc).__name__)
+                if is_leader:
+                    thingspeak_manager.stop_mqtt_listener()
+                    is_leader = False
+                await asyncio.sleep(20)
+    finally:
+        if is_leader:
+            thingspeak_manager.stop_mqtt_listener()
+            try:
+                await client.eval(release_script, 1, key, token)
+            except Exception:
+                pass
+        await client.aclose()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure database tables are created on startup (essential for cloud databases)
-    try:
-        async with engine.begin() as conn:
-            try:
-                from sqlalchemy import text
-                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
-            except Exception as e:
-                logger.warning(f"PostGIS extension notice (non-fatal): {e}")
-            await conn.run_sync(Base.metadata.create_all)
-            try:
-                await conn.execute(text("ALTER TABLE users ALTER COLUMN is_active SET DEFAULT FALSE;"))
-            except Exception as e:
-                logger.warning(f"Column default alter notice (non-fatal): {e}")
-        logger.info("✅ Database tables verified and created successfully.")
-    except Exception as e:
-        logger.error(f"❌ Database table initialization error: {e}")
+    # Schema ownership belongs to Alembic (run once before starting API workers).
+    # create_all cannot safely upgrade existing installations.
+    async with engine.connect() as conn:
+        from sqlalchemy import text
+        await conn.execute(text("SELECT 1"))
+    logger.info("Database connection verified; schema migrations are deployment-managed.")
 
     # Seed default plant species if the table is empty
     try:
@@ -115,36 +158,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Plant species repair warning (non-fatal): {e}")
 
-    # Seed default government-allocated organization accounts
-    try:
-        await _seed_default_orgs()
-        logger.info("✅ Organization seed check complete.")
-    except Exception as e:
-        logger.warning(f"⚠️ Organization seeding warning (non-fatal): {e}")
 
-    # Pre-warm CV models on startup so first user upload is instantaneous
-    try:
-        from app.services.cv.models import get_cv_model
-        get_cv_model()
-        logger.info("✅ Pre-warmed PyTorch CV models on startup.")
-    except Exception as e:
-        logger.warning(f"⚠️ CV model pre-warm notice: {e}")
-
-    # Initiate ThingSpeak IoT MQTT listener for ESP32 air quality hardware
-    try:
-        from app.services.thingspeak import thingspeak_manager
-        thingspeak_manager.start_mqtt_listener()
-        logger.info("✅ ThingSpeak MQTT hardware listener started.")
-    except Exception as e:
-        logger.warning(f"⚠️ ThingSpeak MQTT listener notice: {e}")
-
-    # In-process periodic jobs — no Celery worker/beat is deployed (see
-    # _periodic_environment_refresh_loop docstring), so these run inline here.
     background_jobs = [
         asyncio.create_task(_periodic_environment_refresh_loop()),
         asyncio.create_task(_periodic_weekly_digest_loop()),
+        asyncio.create_task(_thingspeak_mqtt_leader_loop()),
     ]
-    logger.info("✅ In-process periodic job scheduler started (env refresh, weekly digest).")
 
     yield
 
@@ -381,19 +400,7 @@ async def _seed_default_orgs():
                 )
                 session.add(new_org)
                 logger.info(f"🌿 Seeded default organization: {org['email']}")
-            else:
-                updated = False
-                if not getattr(existing, "is_org", False):
-                    existing.is_org = True
-                    updated = True
-                if getattr(existing, "role", None) != "ORGANIZATION":
-                    existing.role = "ORGANIZATION"
-                    updated = True
-                if not getattr(existing, "email_verified", False):
-                    existing.email_verified = True
-                    updated = True
-                if updated:
-                    session.add(existing)
+            # Existing users are never promoted based on an email address.
         await session.commit()
 
 app = FastAPI(
@@ -407,11 +414,14 @@ app = FastAPI(
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    body = await request.body()
-    logger.error(f"Validation error on {request.url.path}: {exc.errors()} | Body: {body.decode('utf-8', errors='ignore')}")
+    safe_errors = [
+        {"loc": error.get("loc"), "msg": error.get("msg"), "type": error.get("type")}
+        for error in exc.errors()
+    ]
+    logger.warning("Validation error on %s: %s", request.url.path, safe_errors)
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors()}
+        content={"detail": safe_errors}
     )
 
 @app.middleware("http")
@@ -436,18 +446,14 @@ allowed_origins = [
     settings.FRONTEND_URL,
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:8000",
 ]
-
-from app.core.config import _ALLOWED_ORIGIN_REGEX
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=_ALLOWED_ORIGIN_REGEX.pattern,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With", "X-Hardware-Api-Key"],
     expose_headers=["Content-Length", "X-Request-ID"],
     max_age=600,
 )

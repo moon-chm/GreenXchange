@@ -95,7 +95,9 @@ async def fetch_environment(lat, lng):
                     "aqi": air_quality.get("aqi", 25),
                     "pm25": air_quality.get("pm25", 8.5),
                     "temperature": weather.get("temperature", 24.5),
-                    "humidity": weather.get("humidity", 60)
+                    "humidity": weather.get("humidity", 60),
+                    "simulated": bool(profile.get("simulated", False)),
+                    "stale": bool(profile.get("stale", False)),
                 }
         except Exception as e:
             logger.warning(f"Redis cache lookup failed for telemetry ({e})")
@@ -116,7 +118,9 @@ async def fetch_environment(lat, lng):
             "aqi": air_quality.get("aqi", 25),
             "pm25": air_quality.get("pm25", 8.5),
             "temperature": weather.get("temperature", 24.5),
-            "humidity": weather.get("humidity", 60)
+            "humidity": weather.get("humidity", 60),
+            "simulated": bool(profile.get("simulated", False)),
+            "stale": bool(profile.get("stale", False)),
         }
 
     # Override AQI if hardware telemetry is actively connected or from ThingSpeak
@@ -129,22 +133,29 @@ async def fetch_environment(lat, lng):
 from app.models.growth import GrowthUpdate
 
 async def fetch_plants(user_id, db):
+    latest_status_subquery = (
+        select(GrowthUpdate.verification_status)
+        .where(GrowthUpdate.plant_id == Plant.id)
+        .order_by(GrowthUpdate.server_timestamp.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
     result = await db.execute(
         select(
             Plant,
             func.ST_Y(Plant.registered_location).label("lat"),
-            func.ST_X(Plant.registered_location).label("lng")
+            func.ST_X(Plant.registered_location).label("lng"),
+            latest_status_subquery.label("latest_status"),
         )
-        .options(selectinload(Plant.species), selectinload(Plant.growth_updates))
-        .filter(Plant.owner_id == user_id)
+        .options(selectinload(Plant.species))
+        .filter(Plant.owner_id == user_id, Plant.deleted_at.is_(None))
     )
     rows = result.all()
 
     plants_data = []
     for row in rows:
         plant = row.Plant
-        latest_gu = plant.growth_updates[0] if (hasattr(plant, "growth_updates") and plant.growth_updates) else None
-        status_str = latest_gu.verification_status.value.lower() if latest_gu else "verified"
+        status_str = row.latest_status.value.lower() if row.latest_status else "verified"
 
         plants_data.append({
             "id": str(plant.id),
@@ -210,6 +221,24 @@ async def fetch_drives(lat, lng, db):
     ]
 
 async def fetch_news(lat, lng, db):
+    if lat is None or lng is None:
+        result = await db.execute(
+            select(NewsFeedItem).order_by(NewsFeedItem.published_at.desc()).limit(3)
+        )
+        return [
+            {
+                "id": item.id,
+                "title": item.title,
+                "content_summary": item.content_summary,
+                "source_url": item.source_url,
+                "category": item.category,
+                "tags": item.tags,
+                "published_at": item.published_at,
+                "dynamic_score": item.relevance_score,
+                "is_local": False,
+            }
+            for item in result.scalars().all()
+        ]
     user_location = f"SRID=4326;POINT({lng} {lat})"
     location_geog = func.ST_GeographyFromText(user_location)
     item_geog = func.cast(NewsFeedItem.location_scope, Geography(geometry_type='POINT', srid=4326))
@@ -250,26 +279,27 @@ async def fetch_news(lat, lng, db):
 async def safe_fetch(coro, timeout=5.0):
     try:
         data = await asyncio.wait_for(coro, timeout=timeout)
-        return {"stale": False, "data": data}
+        return {"stale": bool(data.get("stale", False)) if isinstance(data, dict) else False, "data": data}
     except Exception as e:
         logger.error(f"Dashboard module fetch failed ({type(e).__name__}): {e}")
         return {"stale": True, "data": None}
 
 @router.get("", response_model=DashboardResponse)
 async def get_dashboard(
-    lat: float = Query(None),
-    lng: float = Query(None),
+    lat: float = Query(None, ge=-90, le=90),
+    lng: float = Query(None, ge=-180, le=180),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    use_lat = lat if lat is not None else (current_user.location_lat or 51.5072)
-    use_lng = lng if lng is not None else (current_user.location_lng or -0.1276)
+    use_lat = lat if lat is not None else current_user.location_lat
+    use_lng = lng if lng is not None else current_user.location_lng
+    has_location = use_lat is not None and use_lng is not None
     
     results = await asyncio.gather(
-        safe_fetch(fetch_environment(use_lat, use_lng)),
+        safe_fetch(fetch_environment(use_lat, use_lng)) if has_location else asyncio.sleep(0, result={"stale": True, "data": None}),
         safe_fetch(fetch_plants(current_user.id, db)),
         safe_fetch(fetch_rewards(current_user.id, db)),
-        safe_fetch(fetch_drives(use_lat, use_lng, db)),
+        safe_fetch(fetch_drives(use_lat, use_lng, db)) if has_location else asyncio.sleep(0, result={"stale": True, "data": None}),
         safe_fetch(fetch_news(use_lat, use_lng, db))
     )
     

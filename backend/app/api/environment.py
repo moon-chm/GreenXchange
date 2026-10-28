@@ -39,8 +39,8 @@ async def _refresh_environment_profile_cache(lat: float, lng: float, tile_id: st
 @router.get("/profile")
 async def get_environment_profile(
     background_tasks: BackgroundTasks,
-    lat: float = Query(..., description="Latitude"),
-    lng: float = Query(..., description="Longitude"),
+    lat: float = Query(..., ge=-90, le=90, description="Latitude"),
+    lng: float = Query(..., ge=-180, le=180, description="Longitude"),
     current_user: User = Depends(get_current_user)
 ):
     tile_id = get_tile_id(lat, lng)
@@ -72,9 +72,9 @@ from pydantic import BaseModel
 from app.services.thingspeak import thingspeak_manager
 
 class HardwareTelemetryPayload(BaseModel):
-    device_id: Optional[str] = "ESP32 ThingSpeak (Ch #3499335)"
+    device_id: Optional[str] = None
     source: Optional[str] = "thingspeak"
-    channel_id: Optional[str] = "3499335"
+    channel_id: Optional[str] = None
     entry_id: Optional[int] = None
     aqi: int
     mq135_co2: Optional[float] = 1.33
@@ -89,13 +89,10 @@ class HardwareTelemetryPayload(BaseModel):
 
 async def verify_hardware_api_key(x_hardware_api_key: Optional[str] = Header(None, alias="X-Hardware-Api-Key")):
     """
-    Opt-in shared-secret gate for hardware telemetry ingestion. If HARDWARE_API_KEY
-    isn't configured, this endpoint stays open (unchanged prior behavior) so existing
-    unconfigured devices keep working, but logs a warning on every call. Once
-    HARDWARE_API_KEY is set, callers must present a matching X-Hardware-Api-Key header.
+    Hardware writes require a configured shared secret and a matching header.
     """
     if not settings.HARDWARE_API_KEY:
-        return
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Hardware ingestion is not configured")
     if not x_hardware_api_key or not secrets.compare_digest(x_hardware_api_key, settings.HARDWARE_API_KEY):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing hardware API key")
 
@@ -224,6 +221,8 @@ async def get_thingspeak_stream(
 @router.post("/thingspeak/config")
 async def configure_thingspeak(config: ThingSpeakConfigRequest, current_user: User = Depends(get_current_user)):
     """Dynamically sets ThingSpeak Channel ID and Read API Key."""
+    if str(getattr(current_user, "role", "")).upper() != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required")
     if config.channel_id:
         thingspeak_manager.channel_id = config.channel_id
     if config.read_api_key is not None:

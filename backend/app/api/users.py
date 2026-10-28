@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from app.models.users import User
 from app.schemas.auth import UserResponse
@@ -10,9 +10,9 @@ from app.api.deps import get_db, get_current_user
 router = APIRouter()
 
 class UserUpdate(BaseModel):
-    name: Optional[str] = None
-    location_lat: Optional[float] = None
-    location_lng: Optional[float] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    location_lat: Optional[float] = Field(None, ge=-90, le=90)
+    location_lng: Optional[float] = Field(None, ge=-180, le=180)
 
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_user)):

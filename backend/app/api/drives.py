@@ -18,6 +18,8 @@ async def create_drive(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    if drive_in.end_date <= drive_in.start_date:
+        raise HTTPException(status_code=422, detail="Drive end_date must be after start_date")
     point = f"SRID=4326;POINT({drive_in.lng} {drive_in.lat})"
     
     new_drive = CommunityDrive(
@@ -59,9 +61,9 @@ async def create_drive(
 
 @router.get("/nearby", response_model=List[DriveResponse])
 async def get_nearby_drives(
-    lat: float = Query(...),
-    lng: float = Query(...),
-    radius: float = Query(50000),  # 50km default
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    radius: float = Query(50000, ge=1, le=100000),
     db: AsyncSession = Depends(get_db)
 ):
     from geoalchemy2 import Geography
@@ -106,6 +108,15 @@ async def join_drive(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    from datetime import datetime, timezone
+    drive_result = await db.execute(select(CommunityDrive).where(CommunityDrive.id == drive_id).with_for_update())
+    drive = drive_result.scalar_one_or_none()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found")
+    now = datetime.now(timezone.utc)
+    if drive.end_date < now:
+        raise HTTPException(status_code=409, detail="This drive has ended")
+
     participation = DriveParticipation(
         user_id=current_user.id,
         drive_id=drive_id
@@ -113,25 +124,18 @@ async def join_drive(
     db.add(participation)
     
     try:
+        await db.flush()
+        drive.participant_count += 1
         await db.commit()
     except IntegrityError as e:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="User already joined this drive"
+            detail="Unable to join drive: participation already exists or the drive is unavailable"
         )
-        
-    # Increment participant count atomically
-    await db.execute(
-        update(CommunityDrive)
-        .where(CommunityDrive.id == drive_id)
-        .values(participant_count=CommunityDrive.participant_count + 1)
-    )
-    await db.commit()
     
     # Fetch latest count
-    result = await db.execute(select(CommunityDrive.participant_count).filter(CommunityDrive.id == drive_id))
-    count = result.scalar_one()
+    count = drive.participant_count
     
     return DriveJoinResponse(
         drive_id=drive_id,

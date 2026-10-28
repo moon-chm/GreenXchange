@@ -112,7 +112,7 @@ export default function PlantRegistrationModal({
     latitude: "",
     longitude: "",
     image_url: "",
-    is_public_on_map: true,
+    is_public_on_map: false,
   });
 
   useEffect(() => {
@@ -280,7 +280,7 @@ export default function PlantRegistrationModal({
       latitude: "",
       longitude: "",
       image_url: "",
-      is_public_on_map: true,
+      is_public_on_map: false,
     });
     onClose();
   }, [onClose]);

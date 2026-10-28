@@ -49,13 +49,15 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
         raise credentials_exception
+    if payload.get("ver", 0) != user.token_version:
+        raise credentials_exception
     
     # Store token_data directly on user for admin check
     user._token_data = token_data
     return user
 
 async def get_current_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    if not hasattr(current_user, '_token_data') or not current_user._token_data.admin:
+    if str(getattr(current_user, "role", "")).upper() != "ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="The user doesn't have enough privileges"

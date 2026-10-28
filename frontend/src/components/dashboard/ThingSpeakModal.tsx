@@ -25,6 +25,7 @@ import {
   CartesianGrid
 } from "recharts";
 import api from "@/lib/axios";
+import { useAuth } from "@/context/AuthContext";
 import { getThingSpeakChannelId, getThingSpeakReadApiKey, saveThingSpeakConfig } from "@/lib/thingspeak";
 
 interface ThingSpeakModalProps {
@@ -46,6 +47,8 @@ export default function ThingSpeakModal({
   currentLpg = 0.70,
   buzzerActive = false,
 }: ThingSpeakModalProps) {
+  const { user } = useAuth();
+  const canConfigure = user?.role?.toUpperCase() === "ADMIN";
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   // Channel ID used to be hardcoded here (and in page.tsx/EnvironmentalPanel)
@@ -53,8 +56,8 @@ export default function ThingSpeakModal({
   // no effect on the dashboard. It's now editable, same as the API key below,
   // and both persist via lib/thingspeak so every poller (this modal, and the
   // dashboard's own live poll in page.tsx) reads the same configured channel.
-  const [channelId, setChannelId] = useState("3499335");
-  const [apiKey, setApiKey] = useState("9HWV9GKDI4TGLY7O");
+  const [channelId, setChannelId] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<"aqi" | "co" | "methane" | "lpg">("aqi");
@@ -116,26 +119,11 @@ export default function ThingSpeakModal({
         });
         setHistoryData(formatted);
       } else {
-        // Generate current baseline history for visualization
-        const synthetic = Array.from({ length: 8 }, (_, i) => ({
-          time: `15:${(20 + i * 1).toString().padStart(2, "0")}:00`,
-          aqi: currentAqi,
-          co: currentCo,
-          methane: currentMethane,
-          lpg: currentLpg,
-        }));
-        setHistoryData(synthetic);
+        setHistoryData([]);
       }
     } catch (err) {
       console.warn("Could not fetch ThingSpeak history stream:", err);
-      // Fallback points so chart always renders
-      setHistoryData([
-        { time: "15:27:03", aqi: currentAqi, co: currentCo, methane: currentMethane, lpg: 1.08 },
-        { time: "15:27:23", aqi: currentAqi, co: currentCo, methane: currentMethane, lpg: 0.58 },
-        { time: "15:27:43", aqi: currentAqi, co: currentCo, methane: currentMethane, lpg: 0.97 },
-        { time: "15:28:03", aqi: currentAqi, co: currentCo, methane: currentMethane, lpg: 0.80 },
-        { time: "15:28:23", aqi: currentAqi, co: currentCo, methane: currentMethane, lpg: 0.70 },
-      ]);
+      setHistoryData([]);
     } finally {
       setLoading(false);
     }
@@ -439,9 +427,10 @@ export default function ThingSpeakModal({
 
           <input
             type="text"
-            placeholder="e.g. 3499335"
+            placeholder="Configured by administrator"
             value={channelId}
             onChange={(e) => setChannelId(e.target.value)}
+            disabled={!canConfigure}
             className="w-full bg-black/30 border border-white/15 rounded-xl px-3.5 py-2 text-xs text-parchment placeholder-parchment/30 focus:outline-none focus:border-emerald-400 font-mono"
           />
 
@@ -457,18 +446,19 @@ export default function ThingSpeakModal({
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
-              placeholder="e.g. 9HWV9GKDI4TGLY7O"
+              placeholder="Read API key"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
+              disabled={!canConfigure}
               className="flex-1 bg-black/30 border border-white/15 rounded-xl px-3.5 py-2 text-xs text-parchment placeholder-parchment/30 focus:outline-none focus:border-emerald-400 font-mono"
             />
             <button
               onClick={handleSaveAndSync}
-              disabled={syncing}
+              disabled={syncing || !canConfigure}
               className="bg-fern hover:bg-forest text-parchment px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 border border-white/20 shadow-md disabled:opacity-50 shrink-0"
             >
               <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
-              {syncing ? "Syncing..." : "Sync Now"}
+              {!canConfigure ? "Admin only" : syncing ? "Syncing..." : "Sync Now"}
             </button>
           </div>
 

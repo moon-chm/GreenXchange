@@ -10,6 +10,8 @@ interface User {
   is_active: boolean;
   email_verified?: boolean;
   role?: string;
+  location_lat?: number | null;
+  location_lng?: number | null;
 }
 
 interface AuthContextType {
@@ -42,7 +44,10 @@ function getCachedUser(): User | null {
 
 function isTokenExpired(token: string): boolean {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const segment = token.split('.')[1];
+    if (!segment) return true;
+    const base64 = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')));
     return payload.exp * 1000 < Date.now();
   } catch {
     return true;

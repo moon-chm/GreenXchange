@@ -28,9 +28,7 @@ def get_climate_zone(lat: float) -> str:
 
 async def fetch_weather(lat: float, lng: float) -> Dict[str, Any]:
     """Fetch live weather from Open-Meteo API with fallback."""
-    # Use default coordinates if (0.0, 0.0) supplied
-    effective_lat = 28.6139 if abs(lat) < 0.01 and abs(lng) < 0.01 else lat
-    effective_lng = 77.2090 if abs(lat) < 0.01 and abs(lng) < 0.01 else lng
+    effective_lat, effective_lng = lat, lng
 
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
@@ -50,7 +48,8 @@ async def fetch_weather(lat: float, lng: float) -> Dict[str, Any]:
                     return {
                         "temperature": round(float(temp), 1),
                         "humidity": int(humidity),
-                        "climate_zone": get_climate_zone(effective_lat)
+                        "climate_zone": get_climate_zone(effective_lat),
+                        "source": "live"
                     }
     except Exception as e:
         logger.warning(f"Live weather API call failed: {e}. Using correlated fallback.")
@@ -60,13 +59,13 @@ async def fetch_weather(lat: float, lng: float) -> Dict[str, Any]:
     return {
         "temperature": round(max(5.0, min(42.0, base_temp + random.uniform(-2.0, 2.0))), 1),
         "humidity": random.randint(45, 75),
-        "climate_zone": get_climate_zone(effective_lat)
+        "climate_zone": get_climate_zone(effective_lat),
+        "source": "simulated"
     }
 
 async def fetch_waqi(lat: float, lng: float) -> Dict[str, Any]:
     """Fetch live air quality from Open-Meteo Air Quality API with fallback."""
-    effective_lat = 28.6139 if abs(lat) < 0.01 and abs(lng) < 0.01 else lat
-    effective_lng = 77.2090 if abs(lat) < 0.01 and abs(lng) < 0.01 else lng
+    effective_lat, effective_lng = lat, lng
 
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
@@ -88,7 +87,8 @@ async def fetch_waqi(lat: float, lng: float) -> Dict[str, Any]:
                     return {
                         "aqi": aqi_val,
                         "pm25": pm25_val,
-                        "severity": get_pollution_severity(aqi_val)
+                        "severity": get_pollution_severity(aqi_val),
+                        "source": "live"
                     }
     except Exception as e:
         logger.warning(f"Live air quality API call failed: {e}. Using correlated fallback.")
@@ -98,7 +98,8 @@ async def fetch_waqi(lat: float, lng: float) -> Dict[str, Any]:
     return {
         "aqi": aqi_val,
         "pm25": round(aqi_val * 0.35, 1),
-        "severity": get_pollution_severity(aqi_val)
+        "severity": get_pollution_severity(aqi_val),
+        "source": "simulated"
     }
 
 async def generate_environment_profile(lat: float, lng: float) -> Dict[str, Any]:
@@ -108,14 +109,14 @@ async def generate_environment_profile(lat: float, lng: float) -> Dict[str, Any]
         "tile_id": get_tile_id(lat, lng),
         "weather": weather,
         "air_quality": waqi,
-        "stale": False,
+        "stale": weather.get("source") != "live" or waqi.get("source") != "live",
+        "simulated": weather.get("source") != "live" or waqi.get("source") != "live",
         "updated_at": int(time.time())
     }
 
 # Synchronous wrappers for Celery worker tasks
 def sync_fetch_weather(lat: float, lng: float) -> Dict[str, Any]:
-    effective_lat = 28.6139 if abs(lat) < 0.01 and abs(lng) < 0.01 else lat
-    effective_lng = 77.2090 if abs(lat) < 0.01 and abs(lng) < 0.01 else lng
+    effective_lat, effective_lng = lat, lng
     try:
         resp = httpx.get(
             "https://api.open-meteo.com/v1/forecast",
@@ -134,7 +135,8 @@ def sync_fetch_weather(lat: float, lng: float) -> Dict[str, Any]:
                 return {
                     "temperature": round(float(temp), 1),
                     "humidity": int(humidity),
-                    "climate_zone": get_climate_zone(effective_lat)
+                    "climate_zone": get_climate_zone(effective_lat),
+                    "source": "live"
                 }
     except Exception as e:
         logger.warning(f"Sync weather fetch fallback: {e}")
@@ -143,12 +145,12 @@ def sync_fetch_weather(lat: float, lng: float) -> Dict[str, Any]:
     return {
         "temperature": round(max(5.0, min(42.0, base_temp + random.uniform(-2.0, 2.0))), 1),
         "humidity": random.randint(45, 75),
-        "climate_zone": get_climate_zone(effective_lat)
+        "climate_zone": get_climate_zone(effective_lat),
+        "source": "simulated"
     }
 
 def sync_fetch_waqi(lat: float, lng: float) -> Dict[str, Any]:
-    effective_lat = 28.6139 if abs(lat) < 0.01 and abs(lng) < 0.01 else lat
-    effective_lng = 77.2090 if abs(lat) < 0.01 and abs(lng) < 0.01 else lng
+    effective_lat, effective_lng = lat, lng
     try:
         resp = httpx.get(
             "https://air-quality-api.open-meteo.com/v1/air-quality",
@@ -169,7 +171,8 @@ def sync_fetch_waqi(lat: float, lng: float) -> Dict[str, Any]:
                 return {
                     "aqi": aqi_val,
                     "pm25": pm25_val,
-                    "severity": get_pollution_severity(aqi_val)
+                    "severity": get_pollution_severity(aqi_val),
+                    "source": "live"
                 }
     except Exception as e:
         logger.warning(f"Sync WAQI fetch fallback: {e}")
@@ -178,15 +181,19 @@ def sync_fetch_waqi(lat: float, lng: float) -> Dict[str, Any]:
     return {
         "aqi": aqi_val,
         "pm25": round(aqi_val * 0.35, 1),
-        "severity": get_pollution_severity(aqi_val)
+        "severity": get_pollution_severity(aqi_val),
+        "source": "simulated"
     }
 
 def sync_generate_environment_profile(lat: float, lng: float) -> Dict[str, Any]:
+    weather = sync_fetch_weather(lat, lng)
+    air_quality = sync_fetch_waqi(lat, lng)
     return {
         "tile_id": get_tile_id(lat, lng),
-        "weather": sync_fetch_weather(lat, lng),
-        "air_quality": sync_fetch_waqi(lat, lng),
-        "stale": False,
+        "weather": weather,
+        "air_quality": air_quality,
+        "stale": weather.get("source") != "live" or air_quality.get("source") != "live",
+        "simulated": weather.get("source") != "live" or air_quality.get("source") != "live",
         "updated_at": int(time.time())
     }
 

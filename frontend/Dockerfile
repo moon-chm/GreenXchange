@@ -2,13 +2,13 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # ─── Stage 2: Build ───────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm install
 COPY . .
 
 # Build the production Next.js bundle

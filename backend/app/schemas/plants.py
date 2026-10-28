@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 from app.models.enums import SpaceType
@@ -10,12 +10,12 @@ class PlantRegistrationRequest(BaseModel):
     # personal nickname (e.g. "Office Mango") never gets mistaken for the species.
     species_name: Optional[str] = None
     common_name: Optional[str] = None
-    lat: float
-    lng: float
+    lat: float = Field(..., ge=-90, le=90)
+    lng: float = Field(..., ge=-180, le=180)
     planting_date: datetime
     space_type: SpaceType
     image_url: Optional[str] = None
-    is_public_on_map: bool = True
+    is_public_on_map: bool = False
 
 class PlantRegistrationResponse(BaseModel):
     id: str
@@ -23,7 +23,7 @@ class PlantRegistrationResponse(BaseModel):
     qr_code_base64: str
     common_name: Optional[str] = None
     image_url: Optional[str] = None
-    is_public_on_map: bool = True
+    is_public_on_map: bool = False
 
 class PlantPublicResponse(BaseModel):
     scan_id: str
@@ -47,7 +47,7 @@ class PlantPortfolioResponse(BaseModel):
     lng: float
     status: str = "verified"
     image_url: Optional[str] = None
-    is_public_on_map: bool = True
+    is_public_on_map: bool = False
 
 class CommunityMapPlantResponse(BaseModel):
     id: str
@@ -55,7 +55,6 @@ class CommunityMapPlantResponse(BaseModel):
     common_name: str
     species_name: str
     owner_first_name: str
-    owner_id: str
     is_owner: bool = False
     planting_date: datetime
     age_days: int

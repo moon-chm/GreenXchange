@@ -47,7 +47,8 @@ class Plant(Base):
     planting_date = Column(DateTime(timezone=True), nullable=False)
     space_type = Column(Enum(SpaceType), nullable=False)
     image_url = Column(String, nullable=True)
-    is_public_on_map = Column(Boolean, default=True, nullable=False)
+    is_public_on_map = Column(Boolean, default=False, server_default=text("false"), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
 

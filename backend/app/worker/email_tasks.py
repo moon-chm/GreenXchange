@@ -46,7 +46,7 @@ async def _process_weekly_digests():
         users = users_res.scalars().all()
         for u in users:
             # Calculate stats
-            p_res = await session.execute(select(func.count(Plant.id)).filter(Plant.owner_id == u.id))
+            p_res = await session.execute(select(func.count(Plant.id)).filter(Plant.owner_id == u.id, Plant.deleted_at.is_(None)))
             p_count = p_res.scalar() or 0
 
             balance = await get_user_balance(session, u.id)

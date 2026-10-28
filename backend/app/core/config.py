@@ -1,12 +1,5 @@
-import re
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-# Mirrors the CORSMiddleware allow_origin_regex in app/main.py — kept in one
-# place so auth.py's email-link origin check can't silently drift from what
-# CORS actually allows.
-_ALLOWED_ORIGIN_REGEX = re.compile(r"^https?://greenxchange.*\.onrender\.com$")
-
 
 class Settings(BaseSettings):
     POSTGRES_USER: str = "greenxchange"
@@ -17,14 +10,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     MINIO_ENDPOINT: str = ""
-    MINIO_ACCESS_KEY: str = "minioadmin"
-    MINIO_SECRET_KEY: str = "minioadmin123"
+    MINIO_ACCESS_KEY: str = ""
+    MINIO_SECRET_KEY: str = ""
     MINIO_SECURE: bool = False
-    # Browser-reachable origin for MinIO-stored media (e.g. "https://media.example.com").
-    # MINIO_ENDPOINT above is often an internal/container hostname (e.g. "minio:9000")
-    # that isn't reachable from a client, so it must not be reused for public URLs.
-    # Left unset, previously-hardcoded "http://localhost:9000" behavior is preserved.
-    MINIO_PUBLIC_URL: str = ""
+    # Publicly reachable S3-compatible hostname used only to sign browser URLs.
+    MINIO_PUBLIC_ENDPOINT: str = ""
+    MINIO_PUBLIC_SECURE: bool | None = None
 
     # No hardcoded default: an app that can't authenticate anyone safely must not boot.
     # Set explicitly in .env for local dev; see .env.example.
@@ -64,6 +55,7 @@ class Settings(BaseSettings):
     # Shared secret required on POST /api/environment/hardware (X-Hardware-Api-Key
     # header). Left unset, that endpoint stays open for backward compatibility.
     HARDWARE_API_KEY: str = ""
+    TRUSTED_PROXY_HOPS: int = 0
 
     # ThingSpeak IoT Channel & MQTT Settings.
     # Real credentials belong only in .env / the deployment's env vars (already
@@ -96,9 +88,7 @@ class Settings(BaseSettings):
             "http://127.0.0.1:3000",
             "http://localhost:8000",
         }
-        if origin in allowed:
-            return True
-        return bool(_ALLOWED_ORIGIN_REGEX.match(origin))
+        return origin in allowed
 
     @property
     def jwt_private_key(self) -> str:

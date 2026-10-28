@@ -9,7 +9,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     command: ["postgres", "-c", "ssl=on", "-c", "ssl_cert_file=/var/lib/postgresql/data/server.crt", "-c", "ssl_key_file=/var/lib/postgresql/data/server.key"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
@@ -21,7 +21,7 @@ services:
     image: redis:7-alpine
     container_name: greenxchange_redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -38,10 +38,10 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       # Enable AES-256 Server-Side Encryption
-      MINIO_KMS_SECRET_KEY: ${MINIO_KMS_SECRET_KEY:-my-minio-key:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=}
+      MINIO_KMS_SECRET_KEY: ${MINIO_KMS_SECRET_KEY:-}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -63,6 +63,14 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_SECURE=false
+      - TRUSTED_PROXY_HOPS=1
+      # Gmail API OAuth2 — primary email provider (HTTPS/443, not blocked on any host)
+      # Set GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN in root .env
+      - GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID:-}
+      - GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET:-}
+      - GMAIL_REFRESH_TOKEN=${GMAIL_REFRESH_TOKEN:-}
+      - GMAIL_SENDER=${GMAIL_SENDER:-gogreenxchange.official@gmail.com}
+      - EMAIL_FROM=${EMAIL_FROM:-GreenXchange <gogreenxchange.official@gmail.com>}
     env_file:
       - .env
     volumes:
@@ -81,7 +89,7 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   worker:
     build:
@@ -95,6 +103,13 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_SECURE=false
+      - TRUSTED_PROXY_HOPS=1
+      # Gmail API OAuth2 — same as backend; worker also dispatches transactional emails
+      - GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID:-}
+      - GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET:-}
+      - GMAIL_REFRESH_TOKEN=${GMAIL_REFRESH_TOKEN:-}
+      - GMAIL_SENDER=${GMAIL_SENDER:-gogreenxchange.official@gmail.com}
+      - EMAIL_FROM=${EMAIL_FROM:-GreenXchange <gogreenxchange.official@gmail.com>}
     env_file:
       - .env
     volumes:
@@ -122,11 +137,10 @@ services:
     container_name: greenxchange_frontend
     environment:
       - NEXT_PUBLIC_API_URL=/api
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    command: npm run dev
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    command: node server.js
 
   nginx:
     image: nginx:alpine

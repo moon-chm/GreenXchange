@@ -24,7 +24,6 @@ export interface CommunityTree {
   common_name: string;
   species_name: string;
   owner_first_name: string;
-  owner_id: string;
   is_owner?: boolean;
   planting_date: string;
   age_days?: number;
@@ -56,7 +55,7 @@ export default function PlantMap({ myPlants, onSelectPlant }: PlantMapProps) {
   const fetchCommunityTrees = useCallback(async () => {
     try {
       setLoadingCommunity(true);
-      const res = await api.get<CommunityTree[]>("/plants/community-map");
+      const res = await api.get<CommunityTree[]>("/plants/community-map", { params: { limit: 200 } });
       setCommunityTrees(res.data ?? []);
     } catch (err) {
       console.error("Failed to load community map trees:", err);
@@ -78,7 +77,6 @@ export default function PlantMap({ myPlants, onSelectPlant }: PlantMapProps) {
         common_name: p.common_name || p.species_name,
         species_name: p.species_name,
         owner_first_name: "You",
-        owner_id: "me",
         is_owner: true,
         planting_date: p.planting_date,
         space_type: p.space_type,

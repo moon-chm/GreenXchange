@@ -1,7 +1,7 @@
 import asyncio
 from logging.config import fileConfig
 
-from sqlalchemy import pool
+from sqlalchemy import pool, inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -82,6 +82,28 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    # Earlier releases attempted Alembic before `Base.metadata.create_all()`
+    # and ignored migration errors. If that left a complete legacy schema with
+    # no Alembic version table, record the already-present baseline and let the
+    # new forward migration repair it instead of trying to recreate live tables.
+    inspector = inspect(connection)
+    has_version_table = inspector.has_table("alembic_version")
+    has_version_rows = has_version_table and connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).first() is not None
+    if not has_version_rows and inspector.has_table("users"):
+        baseline_tables = {
+            "environmental_profiles", "news_feed_items", "plant_species", "users",
+            "community_drives", "plants", "drive_participations", "growth_updates",
+            "reward_transactions",
+        }
+        existing_tables = set(inspector.get_table_names())
+        if baseline_tables.issubset(existing_tables):
+            if not has_version_table:
+                connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
+            connection.execute(text("INSERT INTO alembic_version (version_num) VALUES (:revision), (:revision2)"), {
+                "revision": "fix_is_active_default_false",
+                "revision2": "6f001aedd7d4",
+            })
+
     context.configure(
         connection=connection, 
         target_metadata=target_metadata,

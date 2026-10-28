@@ -413,14 +413,14 @@ async def send_email(to_email: str, subject: str, html_content: str, text_conten
         failure_reasons.append("Resend skipped: RESEND_API_KEY not set.")
 
     logger.warning(f"⚠️ [Email Mock/Dev] No active email provider succeeded. Email to '{to_email}' not delivered to inbox.")
-    return {"id": "mock_id", "status": "mock_dispatched", "reasons": failure_reasons}
+    return {"status": "failed", "reasons": failure_reasons}
 
 async def send_verification_email(to_email: str, name: str, token: str, base_url: str = None):
     """Dispatches Account Email Verification link with clean corporate styling."""
     root_url = (base_url or settings.FRONTEND_URL).rstrip("/")
     verify_url = f"{root_url}/verify-email?token={token}"
 
-    logger.info(f"🔗 [VERIFICATION LINK FOR {to_email}]: {verify_url}")
+    logger.info("Verification email dispatch attempted")
 
     content_html = f"""
       <h2 class="email-heading">Verify your email address</h2>
@@ -462,7 +462,7 @@ async def send_password_reset_email(to_email: str, name: str, token: str, base_u
     root_url = (base_url or settings.FRONTEND_URL).rstrip("/")
     reset_url = f"{root_url}/reset-password?token={token}"
 
-    logger.info(f"🔗 [PASSWORD RESET LINK FOR {to_email}]: {reset_url}")
+    logger.info("Password reset email dispatch attempted")
 
     content_html = f"""
       <h2 class="email-heading">Password reset request</h2>

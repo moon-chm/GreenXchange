@@ -13,7 +13,7 @@ GreenXchange is a decentralized, full-stack platform that incentivizes community
 - **Frontend**: Next.js (React), Tailwind CSS
 - **Backend**: FastAPI (Python), SQLAlchemy AsyncORM
 - **Database**: PostgreSQL with PostGIS (over SSL)
-- **Object Storage**: MinIO (AES-256 Server-Side Encryption)
+- **Object Storage**: MinIO (server-side encryption depends on an explicitly configured KMS key)
 - **Task Queue**: Celery with Redis
 - **Reverse Proxy**: Nginx with TLS Configuration
 - **Logging**: Structured JSON logging (`python-json-logger`)
@@ -33,6 +33,8 @@ Ensure you update passwords and add your `OPENAI_API_KEY`.
   ```bash
   python -c "import secrets; print(secrets.token_urlsafe(32))"
   ```
+- `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` — unique credentials for local MinIO. Production deployments also require `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, and a browser-reachable `MINIO_PUBLIC_ENDPOINT` for private image links.
+- `HARDWARE_API_KEY` — set a strong secret before accepting hardware telemetry writes. Requests must send it in `X-Hardware-Api-Key`.
 - If you set `ALGORITHM=RS256` instead of the default `HS256`, you must also generate an RSA key pair:
   ```bash
   python backend/scripts/generate_keys.py

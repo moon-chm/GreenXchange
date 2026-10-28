@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel, UUID4, Field
 
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, get_current_admin_user
 from app.models.users import User
 from app.models.rewards import RewardTransaction, MarketplaceItem, RedemptionTransaction, PayoutRequest
 from app.services.rewards import (
@@ -68,7 +68,7 @@ class RedeemSuccessResponse(BaseModel):
 
 class PayoutCreateRequest(BaseModel):
     amount_gxc: int = Field(..., ge=50, description="Minimum withdrawal is 50 GXC")
-    wallet_address: str = Field(..., min_length=42, max_length=42, description="Ethereum/Polygon wallet address")
+    wallet_address: str = Field(..., pattern=r"^0x[a-fA-F0-9]{40}$", description="Ethereum/Polygon wallet address")
 
 class PayoutResponse(BaseModel):
     id: UUID4
@@ -81,6 +81,9 @@ class PayoutResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PayoutProcessRequest(BaseModel):
+    tx_hash: str = Field(..., min_length=8, max_length=255)
 
 
 @router.get("/balance", response_model=BalanceResponse)
@@ -164,6 +167,8 @@ async def redeem_item(
 
 @router.get("/redemptions", response_model=List[RedemptionResponse])
 async def get_my_redemptions(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -171,6 +176,8 @@ async def get_my_redemptions(
         select(RedemptionTransaction)
         .filter(RedemptionTransaction.user_id == current_user.id)
         .order_by(RedemptionTransaction.created_at.desc())
+        .offset(skip)
+        .limit(limit)
     )
     return result.scalars().all()
 
@@ -192,11 +199,13 @@ async def create_payout(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Payout request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Payout request failed. Please try again.")
 
 
 @router.get("/payouts", response_model=List[PayoutResponse])
 async def get_my_payouts(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -204,8 +213,74 @@ async def get_my_payouts(
         select(PayoutRequest)
         .filter(PayoutRequest.user_id == current_user.id)
         .order_by(PayoutRequest.created_at.desc())
+        .offset(skip)
+        .limit(limit)
     )
     return result.scalars().all()
+
+
+@router.get("/admin/payouts/pending", response_model=List[PayoutResponse])
+async def get_pending_payouts(
+    _admin: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(PayoutRequest).where(PayoutRequest.status == "PENDING").order_by(PayoutRequest.created_at.asc()).limit(200)
+    )
+    return result.scalars().all()
+
+
+@router.post("/admin/payouts/{payout_id}/process", response_model=PayoutResponse)
+async def process_payout(
+    payout_id: UUID4,
+    payload: PayoutProcessRequest,
+    _admin: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import timezone
+    result = await db.execute(select(PayoutRequest).where(PayoutRequest.id == payout_id).with_for_update())
+    payout = result.scalar_one_or_none()
+    if not payout:
+        raise HTTPException(status_code=404, detail="Payout request not found")
+    if payout.status != "PENDING":
+        raise HTTPException(status_code=409, detail="Payout request has already been processed")
+    payout.status = "PROCESSED"
+    payout.tx_hash = payload.tx_hash
+    payout.processed_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(payout)
+    return payout
+
+
+@router.post("/admin/payouts/{payout_id}/reject", response_model=PayoutResponse)
+async def reject_payout(
+    payout_id: UUID4,
+    _admin: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import timezone
+    from app.services.rewards import get_user_balance
+    result = await db.execute(select(PayoutRequest).where(PayoutRequest.id == payout_id).with_for_update())
+    payout = result.scalar_one_or_none()
+    if not payout:
+        raise HTTPException(status_code=404, detail="Payout request not found")
+    if payout.status != "PENDING":
+        raise HTTPException(status_code=409, detail="Payout request has already been processed")
+    user_result = await db.execute(select(User).where(User.id == payout.user_id).with_for_update())
+    if user_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=409, detail="Payout owner no longer exists")
+    balance = await get_user_balance(db, payout.user_id)
+    db.add(RewardTransaction(
+        user_id=payout.user_id,
+        points=payout.amount_gxc,
+        trigger_event="CRYPTO_WALLET_PAYOUT_REFUND",
+        balance_snapshot=balance + payout.amount_gxc,
+    ))
+    payout.status = "REJECTED"
+    payout.processed_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(payout)
+    return payout
 
 
 # ─── Organization Payment Request Endpoints ────────────────────────────────────

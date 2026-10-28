@@ -73,15 +73,33 @@ services:
       - key: PLANT_HEALTH_MODEL_PATH
         value: /app/models/model 2/new-plant_health_resnet18_balanced.pth
 
+      # Durable object storage is required for growth photo uploads.
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_ACCESS_KEY
+        sync: false
+      - key: MINIO_SECRET_KEY
+        sync: false
+      - key: MINIO_SECURE
+        value: "true"
+      - key: MINIO_PUBLIC_ENDPOINT
+        sync: false
+      - key: MINIO_PUBLIC_SECURE
+        value: "true"
+      - key: HARDWARE_API_KEY
+        sync: false
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
+
       # ── ThingSpeak IoT Hardware Stream ─────────────────────────
       - key: THINGSPEAK_CHANNEL_ID
-        value: "3499335"
+        sync: false
       - key: THINGSPEAK_READ_API_KEY
-        value: "9HWV9GKDI4TGLY7O"
+        sync: false
       - key: THINGSPEAK_MQTT_CLIENT_ID
-        value: "GgwMOC8KCyQlIzsoLhgcARw"
+        sync: false
       - key: THINGSPEAK_MQTT_USERNAME
-        value: "GgwMOC8KCyQlIzsoLhgcARw"
+        sync: false
       - key: THINGSPEAK_MQTT_PASSWORD
         sync: false
       - key: THINGSPEAK_MQTT_HOST

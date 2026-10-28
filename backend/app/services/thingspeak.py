@@ -74,8 +74,8 @@ class ThingSpeakManager:
     _instance = None
 
     def __init__(self):
-        self.channel_id = settings.THINGSPEAK_CHANNEL_ID or "3499335"
-        self.read_api_key = settings.THINGSPEAK_READ_API_KEY or "9HWV9GKDI4TGLY7O"
+        self.channel_id = settings.THINGSPEAK_CHANNEL_ID
+        self.read_api_key = settings.THINGSPEAK_READ_API_KEY
         self.mqtt_client = None
         self.is_mqtt_running = False
         self.last_sync_time = 0
@@ -327,6 +327,9 @@ class ThingSpeakManager:
         host = settings.THINGSPEAK_MQTT_HOST
         port = settings.THINGSPEAK_MQTT_PORT
         ch_id = self.channel_id
+        if not client_id or not username or not password or not ch_id:
+            logger.info("ThingSpeak MQTT listener disabled: credentials are not configured.")
+            return
 
         def on_connect(client, userdata, flags, rc):
             if rc == 0:

@@ -22,15 +22,22 @@ BLOCK_TIME_SECONDS = 30 * 60
 TRACK_TIME_SECONDS = 10 * 60
 
 def _get_client_ip(request: Request) -> str:
-    if request.headers.get("x-forwarded-for"):
-        return request.headers.get("x-forwarded-for").split(",")[0].strip()
+    # Only honor forwarded addresses when the deployment explicitly declares
+    # how many trusted reverse proxies append to the chain. Select the address
+    # nearest that trusted proxy, never the caller-controlled leftmost value.
+    trusted_hops = max(0, settings.TRUSTED_PROXY_HOPS)
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if trusted_hops and forwarded_for:
+        addresses = [part.strip() for part in forwarded_for.split(",") if part.strip()]
+        if len(addresses) >= trusted_hops:
+            return addresses[-trusted_hops]
     if request.client:
         return request.client.host
     return "127.0.0.1"
 
 async def check_rate_limit(request: Request):
     if not redis_client:
-        return
+        raise HTTPException(status_code=503, detail="Rate limiting is temporarily unavailable")
     try:
         ip = _get_client_ip(request)
         block_key = f"block:{ip}"
@@ -44,6 +51,7 @@ async def check_rate_limit(request: Request):
         raise
     except Exception as e:
         logger.warning(f"Rate limiter check error: {e}")
+        raise HTTPException(status_code=503, detail="Rate limiting is temporarily unavailable")
 
 async def record_failed_attempt(request: Request):
     if not redis_client:
@@ -91,7 +99,7 @@ async def is_token_blocklisted(jti: str) -> bool:
 
 async def check_endpoint_rate_limit(request: Request, key_prefix: str, max_requests: int, window_seconds: int):
     if not redis_client:
-        return
+        raise HTTPException(status_code=503, detail="Rate limiting is temporarily unavailable")
     try:
         ip = _get_client_ip(request)
         user_id = request.state.user.id if hasattr(request.state, "user") and request.state.user else "anon"
@@ -110,3 +118,4 @@ async def check_endpoint_rate_limit(request: Request, key_prefix: str, max_reque
         raise
     except Exception as e:
         logger.warning(f"Endpoint rate limit error: {e}")
+        raise HTTPException(status_code=503, detail="Rate limiting is temporarily unavailable")

@@ -1,6 +1,7 @@
 import uuid
 import secrets
 import logging
+import hashlib
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query, BackgroundTasks, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -10,7 +11,7 @@ from app.api.deps import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token, decode_token
 from app.core.rate_limiter import (
     check_rate_limit, record_failed_attempt, clear_failed_attempts,
-    check_endpoint_rate_limit, blocklist_token, is_token_blocklisted,
+    check_endpoint_rate_limit, is_token_blocklisted,
 )
 from app.models.users import User
 from app.schemas.auth import (
@@ -22,36 +23,11 @@ from app.services.email import send_verification_email, send_password_reset_emai
 logger = logging.getLogger("auth")
 router = APIRouter()
 
+def _token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
 def _get_request_base_url(request: Request) -> str:
-    """
-    Detects the frontend URL from request origin, referer, or configured FRONTEND_URL.
-
-    Origin/Referer are attacker-controlled on any non-browser request (curl,
-    Postman) — CORS doesn't stop a caller from setting them, it only stops a
-    *browser* from reading the response cross-origin. Trusting them blindly here
-    let an attacker point password-reset/verification emails at a phishing
-    domain, so every candidate is checked against settings.is_allowed_origin()
-    (the same origins CORS itself trusts) before use.
-    """
-    origin = request.headers.get("origin")
-    if origin and settings.is_allowed_origin(origin) and ":8000" not in origin and "backend" not in origin:
-        return origin.rstrip("/")
-    referer = request.headers.get("referer")
-    if referer:
-        from urllib.parse import urlparse
-        p = urlparse(referer)
-        candidate = f"{p.scheme}://{p.netloc}"
-        if settings.is_allowed_origin(candidate) and ":8000" not in p.netloc and "backend" not in p.netloc:
-            return candidate.rstrip("/")
-
-    host = request.headers.get("host", "")
-    if "localhost:3000" in host or "127.0.0.1:3000" in host:
-        return "http://localhost:3000"
-    if host.startswith("localhost") or host.startswith("127.0.0.1"):
-        if ":8000" not in host:
-            return f"http://{host}".rstrip("/")
-        return "http://localhost:3000"
-
+    """Use the configured frontend origin; request headers are untrusted."""
     return settings.FRONTEND_URL.rstrip("/")
 
 @router.post("/register", response_model=UserResponse)
@@ -71,16 +47,7 @@ async def register(user_in: UserCreate, request: Request, background_tasks: Back
         if existing_user:
             if existing_user.email_verified:
                 raise HTTPException(status_code=400, detail="Email already registered. Please sign in.")
-            
-            # Account was registered but unverified — update password and dispatch fresh verification link
-            existing_user.password_hash = get_password_hash(user_in.password)
-            existing_user.name = user_in.name
-            verification_token = secrets.token_urlsafe(32)
-            existing_user.email_verification_token = verification_token
-            existing_user.email_verification_expires_at = now + timedelta(hours=24)
-            await db.commit()
-            background_tasks.add_task(send_verification_email, existing_user.email, existing_user.name, verification_token, base_url)
-            return existing_user
+            raise HTTPException(status_code=409, detail="An account is pending verification. Use the resend verification option.")
             
         hashed_password = get_password_hash(user_in.password)
         verification_token = secrets.token_urlsafe(32)
@@ -94,7 +61,7 @@ async def register(user_in: UserCreate, request: Request, background_tasks: Back
             device_fingerprint=user_in.device_fingerprint,
             is_active=False, # Active once email verified
             email_verified=False,
-            email_verification_token=verification_token,
+            email_verification_token=_token_digest(verification_token),
             email_verification_expires_at=now + timedelta(hours=24)
         )
         db.add(user)
@@ -104,7 +71,7 @@ async def register(user_in: UserCreate, request: Request, background_tasks: Back
         raise
     except Exception as e:
         logger.error(f"Error registering user '{clean_email}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
     
     # Non-blocking async background email dispatch
     background_tasks.add_task(send_verification_email, user.email, user.name, verification_token, base_url)
@@ -114,13 +81,13 @@ async def register(user_in: UserCreate, request: Request, background_tasks: Back
 async def verify_email(token: str = Query(...), db: AsyncSession = Depends(get_db)):
     now = datetime.now(timezone.utc)
     try:
-        result = await db.execute(select(User).where(User.email_verification_token == token))
+        result = await db.execute(select(User).where(User.email_verification_token == _token_digest(token)))
         user = result.scalar_one_or_none()
         
         if not user:
             raise HTTPException(status_code=400, detail="Invalid or expired email verification link.")
             
-        if user.email_verification_expires_at and user.email_verification_expires_at < now:
+        if not user.email_verification_expires_at or user.email_verification_expires_at < now:
             raise HTTPException(status_code=400, detail="Verification link has expired. Please request a new link.")
             
         user.email_verified = True
@@ -134,7 +101,7 @@ async def verify_email(token: str = Query(...), db: AsyncSession = Depends(get_d
         raise
     except Exception as e:
         logger.error(f"Error during email verification: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Verification failed. Please request a new link.")
 
 @router.post("/resend-verification", response_model=MessageResponse)
 async def resend_verification(payload: ForgotPasswordRequest, request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
@@ -151,7 +118,7 @@ async def resend_verification(payload: ForgotPasswordRequest, request: Request, 
             return MessageResponse(message="Account is already verified. Please sign in.")
             
         token = secrets.token_urlsafe(32)
-        user.email_verification_token = token
+        user.email_verification_token = _token_digest(token)
         user.email_verification_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
         await db.commit()
         
@@ -174,7 +141,7 @@ async def forgot_password(payload: ForgotPasswordRequest, request: Request, back
             return MessageResponse(message="If your email is registered, password reset instructions have been sent.")
             
         reset_token = secrets.token_urlsafe(32)
-        user.password_reset_token = reset_token
+        user.password_reset_token = _token_digest(reset_token)
         user.password_reset_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
         await db.commit()
         
@@ -189,13 +156,14 @@ async def forgot_password(payload: ForgotPasswordRequest, request: Request, back
 async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
     now = datetime.now(timezone.utc)
     try:
-        result = await db.execute(select(User).where(User.password_reset_token == payload.token))
+        result = await db.execute(select(User).where(User.password_reset_token == _token_digest(payload.token)))
         user = result.scalar_one_or_none()
         
-        if not user or (user.password_reset_expires_at and user.password_reset_expires_at < now):
+        if not user or not user.password_reset_expires_at or user.password_reset_expires_at < now:
             raise HTTPException(status_code=400, detail="Invalid or expired password reset link.")
             
         user.password_hash = get_password_hash(payload.new_password)
+        user.token_version += 1
         user.password_reset_token = None
         user.password_reset_expires_at = None
         await db.commit()
@@ -214,10 +182,8 @@ async def login(
     db: AsyncSession = Depends(get_db),
     form_data: OAuth2PasswordRequestForm = Depends()
 ):
-    # check_rate_limit already swallows internal errors (e.g. Redis being down)
-    # and only raises HTTPException(429) when the IP is actually blocked — that
-    # exception must propagate here, not be caught, or the lockout never fires.
     await check_rate_limit(request)
+    await check_endpoint_rate_limit(request, "login", max_requests=10, window_seconds=900)
 
     clean_email = form_data.username.strip().lower()
     try:
@@ -225,7 +191,7 @@ async def login(
         user = result.scalar_one_or_none()
     except Exception as e:
         logger.error(f"DB error during login for '{clean_email}': {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail="Database error during login. Please try again.")
+        raise HTTPException(status_code=503, detail="Login is temporarily unavailable. Please try again.")
     
     if not user or not verify_password(form_data.password, user.password_hash):
         try:
@@ -248,10 +214,10 @@ async def login(
     except Exception:
         pass
     
-    access_token = create_access_token(subject=user.id)
+    access_token = create_access_token(subject=user.id, token_version=user.token_version)
     
     jti = str(uuid.uuid4())
-    refresh_token = create_refresh_token(subject=user.id, jti=jti)
+    refresh_token = create_refresh_token(subject=user.id, jti=jti, token_version=user.token_version)
     
     response.set_cookie(
         key="refresh_token",
@@ -298,12 +264,14 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User inactive or not found")
+    if payload.get("ver", 0) != user.token_version:
+        raise HTTPException(status_code=401, detail="Refresh token has been revoked")
         
-    access_token = create_access_token(subject=user.id)
+    access_token = create_access_token(subject=user.id, token_version=user.token_version)
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/logout", response_model=MessageResponse)
-async def logout(request: Request, response: Response):
+async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     # Blocklist the refresh token's jti so it can't be used again even if it
     # was captured before logout — clearing the cookie alone only stops this
     # browser from presenting it, it doesn't revoke the token itself.
@@ -312,14 +280,16 @@ async def logout(request: Request, response: Response):
         try:
             payload = decode_token(refresh_token)
             if payload.get("type") == "refresh" and payload.get("jti"):
-                exp = payload.get("exp")
-                remaining_days = settings.REFRESH_TOKEN_EXPIRE_DAYS
-                if exp:
-                    remaining_seconds = exp - datetime.now(timezone.utc).timestamp()
-                    remaining_days = max(1, int(remaining_seconds // 86400) + 1)
-                await blocklist_token(payload["jti"], remaining_days)
-        except Exception:
-            pass
+                user_id = uuid.UUID(payload.get("sub", ""))
+                result = await db.execute(select(User).where(User.id == user_id).with_for_update())
+                user = result.scalar_one_or_none()
+                if user:
+                    user.token_version += 1
+                    await db.commit()
+        except Exception as exc:
+            await db.rollback()
+            logger.error("Could not revoke refresh sessions during logout: %s", type(exc).__name__)
+            raise HTTPException(status_code=503, detail="Logout could not revoke the session. Please retry.")
 
     response.delete_cookie(key="refresh_token", samesite="none", secure=True)
     return MessageResponse(message="Successfully logged out")

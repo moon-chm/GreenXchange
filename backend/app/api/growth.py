@@ -1,5 +1,6 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, File
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -11,30 +12,36 @@ from app.models.growth import GrowthUpdate
 from app.models.enums import VerificationStatus
 from app.utils.geo import haversine_distance, extract_exif_gps
 from app.services.media import sanitize_image, upload_to_minio
-from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# MINIO_ENDPOINT is often an internal/container hostname not reachable from a
-# browser, so prefer an explicit public URL when configured; otherwise keep the
-# previous default so existing deployments see no behavior change.
-_MINIO_PUBLIC_BASE = (settings.MINIO_PUBLIC_URL or "http://localhost:9000").rstrip("/")
+MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024
+
+def _analyze_image(image_bytes: bytes):
+    from app.services.cv.models import get_cv_model
+    return get_cv_model().analyze_plant_image(image_bytes)
 
 
-def _public_media_url(image_url: str) -> str:
-    if image_url and image_url.startswith("s3://"):
-        return image_url.replace("s3://growth-updates/", f"{_MINIO_PUBLIC_BASE}/growth-updates/")
+def _public_media_url(image_url: str) -> str | None:
+    if image_url and image_url.startswith("s3://growth-updates/"):
+        from app.services.media import get_presigned_media_url
+        object_name = image_url.removeprefix("s3://growth-updates/")
+        try:
+            return get_presigned_media_url(object_name)
+        except Exception:
+            logger.exception("Could not create a signed growth image URL")
+            return None
     return image_url
 
 @router.post("/{plant_id}/growth")
 @router.post("/{plant_id}")
 async def submit_growth_update(
     plant_id: str,
-    lat: float = Form(...),
-    lng: float = Form(...),
+    lat: float = Form(..., ge=-90, le=90),
+    lng: float = Form(..., ge=-180, le=180),
     image: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -47,7 +54,7 @@ async def submit_growth_update(
     # Verify ownership and get anchor location
     result = await db.execute(
         select(Plant, func.ST_X(Plant.anchor_location).label("alng"), func.ST_Y(Plant.anchor_location).label("alat"))
-        .filter(Plant.id == pid, Plant.owner_id == current_user.id)
+        .filter(Plant.id == pid, Plant.owner_id == current_user.id, Plant.deleted_at.is_(None))
     )
     row = result.first()
     if not row:
@@ -66,7 +73,9 @@ async def submit_growth_update(
         except Exception as geo_err:
             logger.warning(f"Geo validation calculation notice: {geo_err}")
         
-    image_bytes = await image.read()
+    image_bytes = await image.read(MAX_IMAGE_UPLOAD_BYTES + 1)
+    if len(image_bytes) > MAX_IMAGE_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
     if not image_bytes or len(image_bytes) == 0:
         raise HTTPException(status_code=400, detail="Uploaded image file is empty. Please capture a valid photo.")
     
@@ -84,9 +93,16 @@ async def submit_growth_update(
         logger.warning(f"EXIF parsing notice: {exif_err}")
             
     # 3. Sanitize and Upload Image
-    sanitized_bytes = sanitize_image(image_bytes)
+    try:
+        sanitized_bytes = await run_in_threadpool(sanitize_image, image_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     obj_name = f"{uuid.uuid4()}.jpg"
-    minio_url = upload_to_minio(obj_name, sanitized_bytes, "image/jpeg")
+    try:
+        minio_url = await run_in_threadpool(upload_to_minio, obj_name, sanitized_bytes, "image/jpeg")
+    except RuntimeError as exc:
+        logger.error("Growth image storage unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Image storage is temporarily unavailable")
     
     # 4. Save to DB
     update_id = uuid.uuid4()
@@ -106,9 +122,7 @@ async def submit_growth_update(
     analysis = None
     if not flag_manual:
         try:
-            from app.services.cv.models import get_cv_model
-            cv_model = get_cv_model()
-            analysis = cv_model.analyze_plant_image(sanitized_bytes)
+            analysis = await run_in_threadpool(_analyze_image, sanitized_bytes)
             
             is_verified = analysis.get("is_verified", False)
             tree_conf = analysis.get("tree_confidence", 0.95)

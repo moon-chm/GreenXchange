@@ -52,6 +52,8 @@ interface EnvironmentData {
   pm25?: number;
   temperature?: number;
   humidity?: number;
+  simulated?: boolean;
+  stale?: boolean;
   hardware?: HardwareData | null;
 }
 
@@ -161,7 +163,7 @@ export default function EnvironmentalPanel({
             {stale && (
               <span className="flex items-center gap-1 text-xs font-medium bg-amber-500/20 text-amber-300 px-2 py-1 rounded-lg border border-amber-400/30">
                 <AlertTriangle size={11} />
-                Stale
+                {data?.simulated ? "Simulated data" : "Stale"}
               </span>
             )}
           </div>

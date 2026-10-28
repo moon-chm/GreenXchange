@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 import redis.asyncio as redis
 from app.core.config import settings
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/")
 async def health_check():
-    status = {"db": "down", "redis": "down", "status": "degraded"}
+    status = {"db": "down", "redis": "down", "storage": "down", "status": "degraded"}
     
     # Check DB
     try:
@@ -18,14 +19,8 @@ async def health_check():
             await conn.execute(text("SELECT 1"))
         status["db"] = "ok"
     except Exception as e:
-        logger.error(f"Health DB check failed: {type(e).__name__}: {e}")
+        logger.error("Health DB check failed: %s", type(e).__name__)
         status["db"] = "down"
-        status["db_error"] = f"{type(e).__name__}: {str(e)}"
-        if settings.DATABASE_URL:
-            # show masked host only
-            status["db_target"] = settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else "configured"
-        else:
-            status["db_target"] = "not_set"
 
     # Check Redis
     try:
@@ -41,7 +36,7 @@ async def health_check():
         logger.warning(f"Health Redis check failed: {type(e).__name__}")
         status["redis"] = "down"
 
-    # MinIO — only check if endpoint is configured (not on Render free tier)
+    # Growth media is a required feature dependency; no endpoint means not ready.
     if settings.MINIO_ENDPOINT:
         try:
             from minio import Minio
@@ -52,15 +47,15 @@ async def health_check():
                 secure=settings.MINIO_SECURE
             )
             client.list_buckets()
-            status["minio"] = "ok"
+            status["storage"] = "ok"
         except Exception as e:
             logger.warning(f"Health MinIO check failed: {type(e).__name__}")
-            status["minio"] = "down"
+            status["storage"] = "down"
     else:
-        status["minio"] = "skipped"
+        status["storage"] = "not_configured"
 
     # Set overall status
-    if status["db"] == "ok":
+    if status["db"] == "ok" and status["redis"] == "ok" and status["storage"] == "ok":
         status["status"] = "ok"
 
-    return status
+    return JSONResponse(status_code=200 if status["status"] == "ok" else 503, content=status)

@@ -1,10 +1,10 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import func, text
+from sqlalchemy import func, text, cast, Numeric
 
 from app.api.deps import get_current_user, get_current_user_optional, get_db
 from app.models.users import User
@@ -16,9 +16,14 @@ from app.schemas.plants import (
 from app.utils.identity import generate_scan_id, generate_qr_code
 from app.core.rate_limiter import check_endpoint_rate_limit
 from app.services.plant_species import clean_species_name
+from starlette.concurrency import run_in_threadpool
 from datetime import datetime, timezone
 
 router = APIRouter()
+
+def _analyze_plant_image(image_bytes: bytes):
+    from app.services.cv.models import get_cv_model
+    return get_cv_model().analyze_plant_image(image_bytes)
 
 def _format_plant_age(planting_date: datetime) -> tuple[int, str]:
     now = datetime.now(timezone.utc)
@@ -175,22 +180,29 @@ async def get_my_plants(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    latest_status_subquery = (
+        select(GrowthUpdate.verification_status)
+        .where(GrowthUpdate.plant_id == Plant.id)
+        .order_by(GrowthUpdate.server_timestamp.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
     result = await db.execute(
         select(
             Plant,
             func.ST_Y(Plant.registered_location).label("lat"),
-            func.ST_X(Plant.registered_location).label("lng")
+            func.ST_X(Plant.registered_location).label("lng"),
+            latest_status_subquery.label("latest_status"),
         )
-        .options(selectinload(Plant.species), selectinload(Plant.growth_updates))
-        .filter(Plant.owner_id == current_user.id)
+        .options(selectinload(Plant.species))
+        .filter(Plant.owner_id == current_user.id, Plant.deleted_at.is_(None))
     )
     rows = result.all()
     
     portfolio = []
     for row in rows:
         plant = row.Plant
-        latest_gu = plant.growth_updates[0] if (hasattr(plant, "growth_updates") and plant.growth_updates) else None
-        status_str = latest_gu.verification_status.value.lower() if latest_gu else "verified"
+        status_str = row.latest_status.value.lower() if row.latest_status else "verified"
 
         species_display = plant.species.common_name if plant.species else "Urban Plant"
         common_display = plant.common_name or species_display
@@ -211,13 +223,15 @@ async def get_my_plants(
                 lng=row.lng,
                 status=status_str,
                 image_url=plant.image_url,
-                is_public_on_map=getattr(plant, "is_public_on_map", True)
+                is_public_on_map=plant.is_public_on_map
             )
         )
     return portfolio
 
 @router.get("/community-map", response_model=List[CommunityMapPlantResponse])
 async def get_community_map_trees(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
     current_user: User = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
@@ -225,17 +239,27 @@ async def get_community_map_trees(
     Returns all public trees opted-in to the community map.
     Includes only the owner's first name for privacy.
     """
+    latest_status_subquery = (
+        select(GrowthUpdate.verification_status)
+        .where(GrowthUpdate.plant_id == Plant.id)
+        .order_by(GrowthUpdate.server_timestamp.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
     result = await db.execute(
         select(
             Plant,
             User.name.label("owner_name"),
-            func.ST_Y(Plant.registered_location).label("lat"),
-            func.ST_X(Plant.registered_location).label("lng")
+            func.round(cast(func.ST_Y(Plant.registered_location), Numeric), 3).label("lat"),
+            func.round(cast(func.ST_X(Plant.registered_location), Numeric), 3).label("lng"),
+            latest_status_subquery.label("latest_status"),
         )
         .outerjoin(User, User.id == Plant.owner_id)
-        .options(selectinload(Plant.species), selectinload(Plant.growth_updates))
-        .filter(Plant.is_public_on_map.isnot(False))
+        .options(selectinload(Plant.species))
+        .filter(Plant.is_public_on_map.is_(True), Plant.deleted_at.is_(None))
         .order_by(Plant.created_at.desc())
+        .offset(skip)
+        .limit(limit)
     )
     rows = result.all()
     
@@ -249,8 +273,8 @@ async def get_community_map_trees(
         age_days, age_formatted = _format_plant_age(plant.planting_date)
         estimated_carbon = round(max(5.0, age_days * 0.06), 1)
 
-        latest_gu = plant.growth_updates[0] if (hasattr(plant, "growth_updates") and plant.growth_updates) else None
-        status_str = latest_gu.verification_status.value.lower() if latest_gu else "verified"
+        latest_status = row.latest_status
+        status_str = latest_status.value.lower() if latest_status else "verified"
 
         is_owner = False
         if current_user and current_user.id == plant.owner_id:
@@ -268,7 +292,6 @@ async def get_community_map_trees(
                 common_name=common_display,
                 species_name=species_display,
                 owner_first_name=owner_first_name,
-                owner_id=str(plant.owner_id),
                 is_owner=is_owner,
                 planting_date=plant.planting_date,
                 age_days=age_days,
@@ -295,7 +318,7 @@ async def get_public_plant(
     result = await db.execute(
         select(Plant, func.ST_X(Plant.registered_location).label("lng"), func.ST_Y(Plant.registered_location).label("lat"))
         .options(selectinload(Plant.species))
-        .filter(Plant.scan_id == scan_id)
+        .filter(Plant.scan_id == scan_id, Plant.deleted_at.is_(None))
     )
     row = result.first()
     if not row:
@@ -330,18 +353,17 @@ async def delete_plant(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid plant ID format")
 
-    result = await db.execute(select(Plant).filter(Plant.id == p_uuid, Plant.owner_id == current_user.id))
+    result = await db.execute(select(Plant).filter(Plant.id == p_uuid, Plant.owner_id == current_user.id, Plant.deleted_at.is_(None)))
     plant = result.scalars().first()
     if not plant:
         raise HTTPException(status_code=404, detail="Plant not found or unauthorized")
 
-    # Delete related growth updates
-    await db.execute(text("DELETE FROM growth_updates WHERE plant_id = :pid"), {"pid": str(p_uuid)})
-
-    await db.delete(plant)
+    # Preserve growth and reward history. Archiving hides the plant from active
+    # user and public views without cascading into immutable audit/ledger rows.
+    plant.deleted_at = datetime.now(timezone.utc)
     await db.commit()
 
-    return {"message": "Plant deleted successfully", "id": plant_id}
+    return {"message": "Plant archived successfully", "id": plant_id}
 
 
 from app.schemas.plants import NurseryCareRequest, NurseryCareResponse, WaterAdvice, SunlightAdvice, FertilizerAdvice
@@ -490,25 +512,31 @@ async def ai_verify_image(
     - Model 2: Plant Health assessment
     - ELA & Growth Stage analysis
     """
-    from app.services.cv.models import get_cv_model
+    from app.services.media import sanitize_image
     try:
-        image_bytes = await image.read()
-        cv_model = get_cv_model()
-        analysis = cv_model.analyze_plant_image(image_bytes)
+        image_bytes = await image.read(10 * 1024 * 1024 + 1)
+        if len(image_bytes) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
+        image_bytes = await run_in_threadpool(sanitize_image, image_bytes)
+        analysis = await run_in_threadpool(_analyze_plant_image, image_bytes)
         return {
             "status": "success",
             "analysis": analysis
         }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"AI verify endpoint error: {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail=f"Image verification failed: {str(e)}")
+        raise HTTPException(status_code=503, detail="Image verification is temporarily unavailable")
 
 
 @router.post("/{plant_id}/growth")
 async def submit_growth_update_via_plants(
     plant_id: str,
-    lat: float = Form(...),
-    lng: float = Form(...),
+    lat: float = Form(..., ge=-90, le=90),
+    lng: float = Form(..., ge=-180, le=180),
     image: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

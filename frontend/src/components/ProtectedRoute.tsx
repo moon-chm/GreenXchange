@@ -1,7 +1,7 @@
 "use client";
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useState, useCallback, ReactNode } from 'react';
+import { useState, useCallback, useEffect, ReactNode } from 'react';
 import CinematicIntroLoader from '@/components/shared/CinematicIntroLoader';
 
 const INTRO_SHOWN_KEY = 'gx_intro_shown';
@@ -33,6 +33,12 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     }
   }, [loading, user, router]);
 
+  useEffect(() => {
+    if (!loading && !user && animationComplete) {
+      router.replace('/login');
+    }
+  }, [loading, user, animationComplete, router]);
+
   // Play the full-screen radial center-to-edge botanical bloom
   if (!animationComplete) {
     return (
@@ -45,7 +51,7 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   // After animation finishes: if not logged in, navigate immediately without any second loader delay
-  if (!user) {
+  if (loading || !user) {
     return null;
   }
 

@@ -17,6 +17,7 @@ interface EnvironmentProfile {
     severity: string;
   };
   stale: boolean;
+  simulated?: boolean;
 }
 
 export default function EnvironmentalPanel() {
@@ -26,26 +27,30 @@ export default function EnvironmentalPanel() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Need user location
     if (!user) return;
-    
-    // Simulate user having location, default to NYC if null in db
-    // Wait, the API requires lat/lng in query params!
-    // In a real app we'd pull this from user object or geolocation API.
-    // Assuming backend returns lat/lng in user profile.
-    const lat = 40.7128; // fallback
-    const lng = -74.0060;
 
-    api.get(`/environment/profile?lat=${lat}&lng=${lng}`)
-      .then((res) => {
-        setProfile(res.data);
-      })
-      .catch((err) => {
-        setError("Failed to load environment profile.");
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    const loadProfile = (lat: number, lng: number) => {
+      api.get("/environment/profile", { params: { lat, lng } })
+        .then((res) => setProfile(res.data))
+        .catch(() => setError("Failed to load environment profile."))
+        .finally(() => setLoading(false));
+    };
+
+    if (typeof user.location_lat === "number" && typeof user.location_lng === "number") {
+      loadProfile(user.location_lat, user.location_lng);
+    } else if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => loadProfile(coords.latitude, coords.longitude),
+        () => {
+          setError("Add your location to your profile or allow location access to view local conditions.");
+          setLoading(false);
+        },
+        { timeout: 5000 },
+      );
+    } else {
+      setError("Add your location to your profile to view local conditions.");
+      setLoading(false);
+    }
   }, [user]);
 
   if (loading) {
@@ -143,7 +148,7 @@ export default function EnvironmentalPanel() {
       {stale && (
         <div className="absolute top-4 right-4 flex items-center text-yellow-500/80 text-xs font-medium bg-yellow-500/10 px-2 py-1 rounded-full border border-yellow-500/20">
           <AlertCircle className="w-3 h-3 mr-1" />
-          Refreshing
+          {profile.simulated ? "Simulated data" : "Refreshing"}
         </div>
       )}
     </div>
