@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Camera, RefreshCw, Check, AlertCircle, SwitchCamera, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { Camera, RefreshCw, Check, AlertCircle, SwitchCamera, ShieldCheck, Sparkles } from "lucide-react";
 
 interface LiveCameraCaptureProps {
   onCapture: (file: File, previewUrl: string) => void;
@@ -10,7 +10,6 @@ interface LiveCameraCaptureProps {
   onClear?: () => void;
   label?: string;
   sublabel?: string;
-  aspectRatio?: "square" | "video" | "auto";
 }
 
 export default function LiveCameraCapture({
@@ -19,38 +18,34 @@ export default function LiveCameraCapture({
   onClear,
   label = "Live Plant Camera",
   sublabel = "Strictly live camera capture enforced. Gallery uploads are disabled.",
-  aspectRatio = "video",
 }: LiveCameraCaptureProps) {
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [preview, setPreview] = useState<string | null>(initialPreview || null);
   const [flash, setFlash] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Stop active video stream
   const stopStream = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
-  }, [stream]);
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }, []);
 
   // Start WebRTC live camera stream
-  const startCamera = useCallback(async (mode: "environment" | "user" = facingMode) => {
+  const startCamera = useCallback(async (mode: "environment" | "user") => {
     setIsInitializing(true);
     setCameraError(null);
 
     // Stop existing stream first
-    if (stream) {
-      stream.getTracks().forEach((t) => t.stop());
-    }
+    stopStream();
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -67,41 +62,47 @@ export default function LiveCameraCapture({
       };
 
       const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-      setStream(mediaStream);
+      streamRef.current = mediaStream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
         await videoRef.current.play().catch(() => {});
       }
       setIsInitializing(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn("WebRTC camera stream error:", err);
       setIsInitializing(false);
-      
-      const isDenied = err.name === "NotAllowedError" || err.name === "PermissionDeniedError";
+
+      const errorName = err instanceof Error ? err.name : "";
+      const isDenied = errorName === "NotAllowedError" || errorName === "PermissionDeniedError";
       if (isDenied) {
         setCameraError("Camera permission denied. Please allow camera access in your browser settings.");
       } else {
         setCameraError("Live camera stream unavailable. Tap below to launch your device camera.");
       }
     }
-  }, [facingMode, stream]);
+  }, [stopStream]);
 
   // Initial camera startup if no preview exists
   useEffect(() => {
     if (!preview) {
-      startCamera(facingMode);
+      void startCamera(facingMode);
     }
     return () => {
       stopStream();
     };
-  }, [preview, facingMode]);
+  }, [preview, facingMode, startCamera, stopStream]);
+
+  useEffect(() => {
+    return () => {
+      if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
   // Handle camera switch
   const handleToggleFacingMode = () => {
     const newMode = facingMode === "environment" ? "user" : "environment";
     setFacingMode(newMode);
-    startCamera(newMode);
   };
 
   // Capture frame from live video feed
@@ -142,21 +143,6 @@ export default function LiveCameraCapture({
     );
   }, [onCapture, stopStream]);
 
-  // Timed capture
-  const handleTimedCapture = () => {
-    setCountdown(3);
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(interval);
-          captureFrame();
-          return null;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
   // Fallback native camera file input handler (strictly capture="environment")
   const handleNativeCameraFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -172,7 +158,6 @@ export default function LiveCameraCapture({
   const handleRetake = () => {
     setPreview(null);
     if (onClear) onClear();
-    startCamera(facingMode);
   };
 
   return (
@@ -207,15 +192,6 @@ export default function LiveCameraCapture({
           type="file"
           accept="image/*"
           capture="environment"
-          onChange={handleNativeCameraFile}
-          className="hidden"
-        />
-
-        {/* Regular file picker fallback */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
           onChange={handleNativeCameraFile}
           className="hidden"
         />
@@ -274,6 +250,11 @@ export default function LiveCameraCapture({
               muted
               className="w-full h-full min-h-[280px] max-h-[380px] object-cover"
             />
+            {isInitializing && !cameraError && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-canopy/50 text-sm text-white">
+                Starting camera…
+              </div>
+            )}
 
             {/* Viewfinder HUD Target Reticle */}
             <div className="absolute inset-6 border border-fern/30 rounded-xl pointer-events-none flex flex-col justify-between p-2">
@@ -295,21 +276,6 @@ export default function LiveCameraCapture({
                 <div className="w-4 h-4 border-b-2 border-r-2 border-fern" />
               </div>
             </div>
-
-            {/* Countdown Overlay */}
-            {countdown !== null && (
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-30">
-                <motion.span
-                  key={countdown}
-                  initial={{ scale: 1.5, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.8, opacity: 0 }}
-                  className="font-display text-6xl font-bold text-emerald-400 drop-shadow-lg"
-                >
-                  {countdown}
-                </motion.span>
-              </div>
-            )}
 
             {/* Top Bar Indicators */}
             <div className="absolute top-3 inset-x-3 flex items-center justify-between z-20 pointer-events-auto">
@@ -358,11 +324,11 @@ export default function LiveCameraCapture({
                 <div className="flex flex-col sm:flex-row gap-2 mt-1 w-full max-w-xs">
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => nativeCameraInputRef.current?.click()}
                     className="flex-1 py-2 px-3 bg-fern hover:bg-forest text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1 shadow-sm"
                   >
                     <Camera className="w-3.5 h-3.5" />
-                    Take / Upload Photo
+                    Open Camera
                   </button>
                   <button
                     type="button"

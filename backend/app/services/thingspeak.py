@@ -342,6 +342,22 @@ class ThingSpeakManager:
             else:
                 logger.warning(f"ThingSpeak MQTT connection failed with result code {rc}")
 
+        def on_disconnect(client, userdata, *disconnect_info):
+            # Paho 2.x callback API v1 supplies (rc); v2 supplies
+            # (disconnect_flags, reason_code, properties).
+            if len(disconnect_info) >= 2:
+                disconnect_flags, reason_code = disconnect_info[:2]
+                from_server = getattr(disconnect_flags, "is_disconnect_packet_from_server", None)
+                logger.warning(
+                    "ThingSpeak MQTT disconnected (reason=%s, server_disconnect=%s).",
+                    reason_code,
+                    from_server,
+                )
+            elif disconnect_info:
+                logger.warning("ThingSpeak MQTT disconnected (reason=%s).", disconnect_info[0])
+            else:
+                logger.warning("ThingSpeak MQTT disconnected without a reason code.")
+
         def on_message(client, userdata, msg):
             try:
                 topic = msg.topic
@@ -401,7 +417,9 @@ class ThingSpeakManager:
             client = mqtt.Client(client_id=client_id)
             client.username_pw_set(username, password)
             client.on_connect = on_connect
+            client.on_disconnect = on_disconnect
             client.on_message = on_message
+            client.reconnect_delay_set(min_delay=5, max_delay=60)
             client.connect_async(host, port, 60)
             client.loop_start()
             self.mqtt_client = client

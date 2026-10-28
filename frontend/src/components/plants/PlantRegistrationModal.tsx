@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { motion, AnimatePresence, useReducedMotion, type HTMLMotionProps } from "framer-motion";
 import api from "@/lib/axios";
 import { extractErrorMessage } from "@/lib/utils";
 
-import { Camera, Sparkles, AlertCircle, Globe, Upload, Image as ImageIcon } from "lucide-react";
+import { Globe } from "lucide-react";
 import LiveCameraCapture from "@/components/shared/LiveCameraCapture";
 
 interface PlantRegistrationModalProps {
@@ -81,9 +81,12 @@ interface FormData {
   is_public_on_map: boolean;
 }
 
-const TOTAL_STEPS = 4;
+interface SpeciesOption {
+  id: string;
+  common_name?: string;
+}
 
-const OTHER_SPECIES_ID = "__other__";
+const TOTAL_STEPS = 4;
 
 const labelClass = "block text-sm font-medium text-canopy mb-1.5";
 const inputClass =
@@ -98,11 +101,13 @@ export default function PlantRegistrationModal({
 
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isImageUploading, setIsImageUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isGpsLoading, setIsGpsLoading] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const imageUploadIdRef = useRef(0);
 
-  const [speciesList, setSpeciesList] = useState<any[]>([]);
-  const [loadingSpecies, setLoadingSpecies] = useState(false);
+  const [speciesList, setSpeciesList] = useState<SpeciesOption[]>([]);
   const [customSpeciesName, setCustomSpeciesName] = useState("");
 
   const [formData, setFormData] = useState<FormData>({
@@ -119,14 +124,11 @@ export default function PlantRegistrationModal({
     if (!isOpen) return;
     const fetchSpecies = async () => {
       try {
-        setLoadingSpecies(true);
         const res = await api.get("/plants/species");
         const data = res.data ?? [];
         setSpeciesList(data);
       } catch (err) {
         console.error("Failed to load species:", err);
-      } finally {
-        setLoadingSpecies(false);
       }
     };
     fetchSpecies();
@@ -139,22 +141,6 @@ export default function PlantRegistrationModal({
     },
     []
   );
-
-  const handleImageFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      setError("Image size must be less than 10MB");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      if (evt.target?.result) {
-        setFormData((prev) => ({ ...prev, image_url: evt.target!.result as string }));
-      }
-    };
-    reader.readAsDataURL(file);
-  }, []);
 
   const handleGpsAutoFill = useCallback(() => {
     if (!navigator.geolocation) {
@@ -181,7 +167,7 @@ export default function PlantRegistrationModal({
     );
   }, []);
 
-  const handleNext = useCallback(() => {
+  const handleNext = () => {
     setError(null);
     if (step === 1) {
       if (!customSpeciesName.trim()) {
@@ -190,8 +176,12 @@ export default function PlantRegistrationModal({
       }
     }
     if (step === 2) {
+      if (isImageUploading) {
+        setError("Please wait for the plant photo to finish uploading.");
+        return;
+      }
       if (!formData.image_url) {
-        setError("Please upload or snap a photo of your plant.");
+        setError("Please capture a photo of your plant.");
         return;
       }
     }
@@ -214,7 +204,7 @@ export default function PlantRegistrationModal({
       return;
     }
     setStep((s) => s + 1);
-  }, [step, formData]);
+  };
 
   const handleSubmit = useCallback(async () => {
     setIsSubmitting(true);
@@ -241,7 +231,7 @@ export default function PlantRegistrationModal({
       if (plantName && speciesList.length > 0) {
         const pClean = cleanName(plantName);
         const matched = pClean
-          ? speciesList.find((s: any) => cleanName(s.common_name || "") === pClean)
+          ? speciesList.find((s) => cleanName(s.common_name || "") === pClean)
           : undefined;
         if (matched) {
           resolvedSpeciesId = matched.id;
@@ -270,8 +260,11 @@ export default function PlantRegistrationModal({
   }, [formData, customSpeciesName, speciesList, onSuccess]);
 
   const handleClose = useCallback(() => {
+    imageUploadIdRef.current += 1;
     setStep(1);
     setError(null);
+    setImagePreview(null);
+    setIsImageUploading(false);
     setCustomSpeciesName("");
     setFormData({
       common_name: "",
@@ -286,11 +279,11 @@ export default function PlantRegistrationModal({
   }, [onClose]);
 
 
-  const overlayAnim = shouldReduceMotion
+  const overlayAnim: HTMLMotionProps<"div"> = shouldReduceMotion
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
     : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } };
 
-  const modalAnim = shouldReduceMotion
+  const modalAnim: HTMLMotionProps<"div"> = shouldReduceMotion
     ? {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
@@ -304,7 +297,7 @@ export default function PlantRegistrationModal({
         transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
       };
 
-  const stepAnim = shouldReduceMotion
+  const stepAnim: HTMLMotionProps<"div"> = shouldReduceMotion
     ? {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
@@ -323,7 +316,7 @@ export default function PlantRegistrationModal({
       {isOpen && (
         <motion.div
           key="overlay"
-          {...(overlayAnim as any)}
+          {...overlayAnim}
           transition={{ duration: 0.2 }}
           className="fixed inset-0 bg-canopy/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
           onClick={(e) => {
@@ -332,7 +325,7 @@ export default function PlantRegistrationModal({
         >
           <motion.div
             key="modal"
-            {...(modalAnim as any)}
+            {...modalAnim}
             className="bg-parchment rounded-2xl p-6 max-w-lg w-full mx-4 shadow-panel relative"
             onClick={(e) => e.stopPropagation()}
           >
@@ -384,7 +377,7 @@ export default function PlantRegistrationModal({
             {/* Step content */}
             <AnimatePresence mode="wait">
               {step === 1 && (
-                <motion.div key="step1" {...(stepAnim as any)} className="flex flex-col gap-4">
+                <motion.div key="step1" {...stepAnim} className="flex flex-col gap-4">
                   {/* Plant name — free-text input */}
                   <div>
                     <label htmlFor="custom_species_name" className={labelClass}>
@@ -459,7 +452,7 @@ export default function PlantRegistrationModal({
                         id="space_type"
                         name="space_type"
                         value={formData.space_type}
-                        onChange={handleChange as any}
+                        onChange={handleChange}
                         className={inputClass}
                       >
                         <option value="indoor">Indoor</option>
@@ -486,23 +479,55 @@ export default function PlantRegistrationModal({
               )}
 
               {step === 2 && (
-                <motion.div key="step2" {...(stepAnim as any)} className="flex flex-col gap-3">
+                <motion.div key="step2" {...stepAnim} className="flex flex-col gap-3">
                   <LiveCameraCapture
                     label="Live Plant Registration Photo"
                     sublabel="Strictly live camera capture required. Align the plant/tree inside the target frame."
-                    initialPreview={formData.image_url}
-                    onCapture={(_file, previewUrl) => {
-                      setFormData((prev) => ({ ...prev, image_url: previewUrl }));
+                    initialPreview={imagePreview}
+                    onCapture={(file, previewUrl) => {
+                      const uploadId = ++imageUploadIdRef.current;
+                      setImagePreview(previewUrl);
+                      setFormData((prev) => ({ ...prev, image_url: "" }));
+                      setIsImageUploading(true);
+                      setError(null);
+
+                      const previewReader = new FileReader();
+                      previewReader.onload = () => {
+                        if (typeof previewReader.result === "string") setImagePreview(previewReader.result);
+                      };
+                      previewReader.readAsDataURL(file);
+
+                      const body = new FormData();
+                      body.append("image", file);
+                      api.post("/plants/upload-image", body, { headers: { "Content-Type": undefined } })
+                        .then((res) => {
+                          if (!res.data?.image_url) throw new Error("The photo upload did not return a saved image.");
+                          if (imageUploadIdRef.current === uploadId) {
+                            setFormData((prev) => ({ ...prev, image_url: res.data.image_url }));
+                          }
+                        })
+                        .catch((uploadError: unknown) => {
+                          if (imageUploadIdRef.current !== uploadId) return;
+                          setError(extractErrorMessage(uploadError, "Photo upload failed. Please try capturing it again."));
+                          setImagePreview(null);
+                        })
+                        .finally(() => {
+                          if (imageUploadIdRef.current === uploadId) setIsImageUploading(false);
+                        });
                     }}
                     onClear={() => {
+                      imageUploadIdRef.current += 1;
+                      setIsImageUploading(false);
+                      setImagePreview(null);
                       setFormData((prev) => ({ ...prev, image_url: "" }));
                     }}
                   />
+                  {isImageUploading && <p className="text-xs text-canopy/60">Saving photo securely…</p>}
                 </motion.div>
               )}
 
               {step === 3 && (
-                <motion.div key="step3" {...(stepAnim as any)} className="flex flex-col gap-4">
+                <motion.div key="step3" {...stepAnim} className="flex flex-col gap-4">
                   <div className="flex gap-3">
                     <div className="flex-1">
                       <label htmlFor="latitude" className={labelClass}>
@@ -575,14 +600,14 @@ export default function PlantRegistrationModal({
               {step === 4 && (
                 <motion.div
                   key="step4"
-                  {...(stepAnim as any)}
+                  {...stepAnim}
                   className="flex flex-col items-center gap-4 py-4"
                 >
                   {/* Photo & QR Confirmation */}
                   <div className="flex items-center gap-4">
-                    {formData.image_url && (
+                    {imagePreview && (
                       <div className="w-16 h-16 rounded-xl overflow-hidden border border-sage/30 shadow-sm">
-                        <img src={formData.image_url} alt="Plant" className="w-full h-full object-cover" />
+                        <img src={imagePreview} alt="Plant" className="w-full h-full object-cover" />
                       </div>
                     )}
                     <div className="w-16 h-16 bg-fern rounded-xl flex items-center justify-center text-parchment shadow-sm">
@@ -637,7 +662,7 @@ export default function PlantRegistrationModal({
                 <motion.button
                   type="button"
                   onClick={handleNext}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isImageUploading}
                   whileTap={shouldReduceMotion ? {} : { scale: 0.97 }}
                   className="flex-1 py-2.5 rounded-xl bg-fern hover:bg-forest text-parchment text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >

@@ -17,6 +17,7 @@ import time
 import json
 import logging
 import argparse
+import os
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -33,9 +34,11 @@ logging.basicConfig(
 logger = logging.getLogger("thingspeak_bridge")
 
 DEFAULT_CHANNEL_ID = "3499335"
-DEFAULT_CLIENT_ID = "GgwMOC8KCyQlIzsoLhgcARw"
-DEFAULT_USERNAME = "GgwMOC8KCyQlIzsoLhgcARw"
-DEFAULT_PASSWORD = "buw0sT0NKP2HU5VOilaICd2D"
+# The bridge needs its own ThingSpeak MQTT device credentials. Reusing the
+# backend listener's client ID makes the broker disconnect one of the clients.
+DEFAULT_CLIENT_ID = os.getenv("THINGSPEAK_BRIDGE_CLIENT_ID", "")
+DEFAULT_USERNAME = os.getenv("THINGSPEAK_BRIDGE_USERNAME", "")
+DEFAULT_PASSWORD = os.getenv("THINGSPEAK_BRIDGE_PASSWORD", "")
 DEFAULT_BROKER = "mqtt3.thingspeak.com"
 DEFAULT_PORT = 1883
 DEFAULT_API_URL = "http://localhost:8000/api/environment/hardware"
@@ -109,6 +112,13 @@ def run_mqtt_bridge(
     if mqtt is None:
         logger.error("paho-mqtt is required. Run: pip install paho-mqtt")
         sys.exit(1)
+    if not client_id or not username or not password:
+        logger.error(
+            "MQTT mode requires separate bridge credentials: set "
+            "THINGSPEAK_BRIDGE_CLIENT_ID, THINGSPEAK_BRIDGE_USERNAME, and "
+            "THINGSPEAK_BRIDGE_PASSWORD, or pass the corresponding CLI options."
+        )
+        sys.exit(2)
 
     latest_data = {
         "device_id": f"ESP32 ThingSpeak (Ch #{channel_id})",

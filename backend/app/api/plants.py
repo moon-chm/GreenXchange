@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -46,6 +46,24 @@ def _format_plant_age(planting_date: datetime) -> tuple[int, str]:
 from app.models.enums import ToxicityLevel, AllergenRisk, MaintenanceLevel, GrowthRate, SpaceType
 import logging
 logger = logging.getLogger(__name__)
+MAX_PLANT_IMAGE_BYTES = 10 * 1024 * 1024
+
+
+def _browser_image_url(image_url: Optional[str]) -> Optional[str]:
+    """Convert private MinIO references into short-lived URLs for browser display."""
+    prefix = "s3://growth-updates/"
+    if not image_url:
+        return image_url
+    if image_url.startswith("blob:"):
+        return None
+    if not image_url.startswith(prefix):
+        return image_url
+    try:
+        from app.services.media import get_presigned_media_url
+        return get_presigned_media_url(image_url.removeprefix(prefix))
+    except Exception as exc:
+        logger.warning("Could not create browser URL for plant image: %s", type(exc).__name__)
+        return None
 
 @router.post("/register", response_model=PlantRegistrationResponse)
 async def register_plant(
@@ -164,9 +182,38 @@ async def register_plant(
         scan_id=scan_id,
         qr_code_base64=qr_b64,
         common_name=plant.common_name,
-        image_url=plant.image_url,
+        image_url=_browser_image_url(plant.image_url),
         is_public_on_map=plant.is_public_on_map
     )
+
+
+@router.post("/upload-image")
+async def upload_plant_image(
+    request: Request,
+    image: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Validate and durably store a plant photo before plant registration."""
+    await check_endpoint_rate_limit(request, "plant_image_upload", max_requests=30, window_seconds=3600)
+    image_bytes = await image.read(MAX_PLANT_IMAGE_BYTES + 1)
+    if len(image_bytes) > MAX_PLANT_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Please capture a valid plant photo")
+
+    from app.services.media import sanitize_image, upload_to_minio
+    try:
+        sanitized_bytes = await run_in_threadpool(sanitize_image, image_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    object_name = f"plant-images/{current_user.id}/{uuid.uuid4().hex}.jpg"
+    try:
+        image_url = await run_in_threadpool(upload_to_minio, object_name, sanitized_bytes, "image/jpeg")
+    except RuntimeError as exc:
+        logger.error("Plant image storage unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Image storage is temporarily unavailable") from exc
+    return {"image_url": image_url}
 
 @router.get("/species")
 async def get_all_species(db: AsyncSession = Depends(get_db)):
@@ -222,7 +269,7 @@ async def get_my_plants(
                 lat=row.lat,
                 lng=row.lng,
                 status=status_str,
-                image_url=plant.image_url,
+                image_url=_browser_image_url(plant.image_url),
                 is_public_on_map=plant.is_public_on_map
             )
         )
@@ -299,7 +346,7 @@ async def get_community_map_trees(
                 space_type=plant.space_type,
                 lat=row.lat,
                 lng=row.lng,
-                image_url=plant.image_url,
+                image_url=_browser_image_url(plant.image_url),
                 estimated_carbon_kg=estimated_carbon,
                 status=status_str
             )
@@ -337,6 +384,7 @@ async def get_public_plant(
         common_name=p.common_name,
         planting_date=p.planting_date,
         space_type=p.space_type,
+        image_url=_browser_image_url(p.image_url),
         locality_lat=locality_lat,
         locality_lng=locality_lng
     )

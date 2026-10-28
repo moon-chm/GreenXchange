@@ -20,6 +20,7 @@ interface PublicPlant {
   common_name?: string;
   planting_date: string;
   space_type: string;
+  image_url?: string | null;
   locality_lat: number;
   locality_lng: number;
 }
@@ -157,13 +158,20 @@ export default function PublicPlantPassport() {
 
         {/* Hero visual */}
         <div className="relative h-44 bg-sage/10 border-b border-sage/20 flex flex-col items-center justify-center gap-2">
-          <div className="w-16 h-16 rounded-2xl bg-fern/10 flex items-center justify-center text-fern">
-            <Leaf size={32} />
-          </div>
-          <h2 className="font-display font-bold text-canopy text-xl text-center px-4 leading-tight">
+          {plant.image_url ? (
+            <>
+              <img src={plant.image_url} alt={plant.common_name || plant.species_name} className="absolute inset-0 w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+            </>
+          ) : (
+            <div className="w-16 h-16 rounded-2xl bg-fern/10 flex items-center justify-center text-fern">
+              <Leaf size={32} />
+            </div>
+          )}
+          <h2 className={`relative font-display font-bold text-xl text-center px-4 leading-tight ${plant.image_url ? "text-white drop-shadow" : "text-canopy"}`}>
             {plant.common_name || plant.species_name}
           </h2>
-          <p className="text-xs italic text-canopy/50">{plant.scientific_name}</p>
+          <p className={`relative text-xs italic ${plant.image_url ? "text-white/80" : "text-canopy/50"}`}>{plant.scientific_name}</p>
         </div>
 
         {/* Specifications */}
