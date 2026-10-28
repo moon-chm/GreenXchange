@@ -22,5 +22,4 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-alembic/versions/
 ml_model/
