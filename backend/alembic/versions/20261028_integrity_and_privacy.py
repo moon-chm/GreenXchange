@@ -134,6 +134,15 @@ def upgrade() -> None:
         END;
         $$ LANGUAGE plpgsql;
     """)
+    # Older schemas may have skipped the original migration that defined this function.
+    op.execute("""
+        CREATE OR REPLACE FUNCTION prevent_modify_append_only()
+        RETURNS trigger AS $$
+        BEGIN
+            RAISE EXCEPTION 'This table is append-only. Updates and Deletes are not allowed.';
+        END;
+        $$ LANGUAGE plpgsql;
+    """)
     op.execute("DROP TRIGGER IF EXISTS growth_updates_append_only ON growth_updates")
     op.execute("CREATE TRIGGER growth_updates_append_only BEFORE UPDATE OR DELETE ON growth_updates FOR EACH ROW EXECUTE FUNCTION protect_growth_update()")
     op.execute("DROP TRIGGER IF EXISTS growth_verification_events_append_only ON growth_verification_events")
