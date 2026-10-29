@@ -3,13 +3,14 @@ from typing import List, Optional
 from app.models.enums import SpaceType, MaintenanceLevel
 
 class RecommendationRequest(BaseModel):
-    lat: float = 0.0
-    lng: float = 0.0
+    lat: float = Field(..., ge=-90, le=90, allow_inf_nan=False)
+    lng: float = Field(..., ge=-180, le=180, allow_inf_nan=False)
     space_type: SpaceType = SpaceType.OUTDOOR_GARDEN
-    available_space: float = Field(10.0, description="Available space in square meters")
+    available_space: float = Field(10.0, gt=0, allow_inf_nan=False, description="Available space in square meters")
     indoor: bool = False
     experience_level: MaintenanceLevel = MaintenanceLevel.MEDIUM
-    allergies: List[str] = []
+    allergies: List[str] = Field(default_factory=list)
+    low_maintenance: bool = False
     has_pets: bool = False
     has_children: bool = False
 
@@ -22,12 +23,14 @@ class SpeciesCard(BaseModel):
     explanation: str
     care_guidance: str
     score: float
+    environment_note: str = ""
 
 
 class PlantAnalysisRequest(BaseModel):
-    plant_name: str
-    lat: float = 0.0
-    lng: float = 0.0
+    low_maintenance: bool = False
+    plant_name: str = Field(..., min_length=1, max_length=100, pattern=r".*\S.*")
+    lat: float = Field(..., ge=-90, le=90, allow_inf_nan=False)
+    lng: float = Field(..., ge=-180, le=180, allow_inf_nan=False)
     space_type: SpaceType = SpaceType.OUTDOOR_GARDEN
     experience_level: MaintenanceLevel = MaintenanceLevel.MEDIUM
     has_pets: bool = False
@@ -50,7 +53,10 @@ class PlantAnalysisResponse(BaseModel):
     xai_breakdown: List[XAIContribution]
     genai_synthesis: str
     microclimate_fit: str
-    carbon_offset_kg_year: float
+    carbon_offset_kg_year: Optional[float] = None
     care_guide: str
     recommended_space: str
+    analysis_source: str = "catalog_rules"
+    environment_note: str = ""
+    safety_note: str = ""
 

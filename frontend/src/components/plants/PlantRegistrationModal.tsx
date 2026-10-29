@@ -13,6 +13,9 @@ interface PlantRegistrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialPlantName?: string;
+  initialSpaceType?: string;
+  returnFocusRef?: React.RefObject<HTMLButtonElement>;
 }
 
 function QRIcon({ size = 24 }: { size?: number }) {
@@ -97,6 +100,9 @@ export default function PlantRegistrationModal({
   isOpen,
   onClose,
   onSuccess,
+  initialPlantName = "",
+  initialSpaceType = "indoor",
+  returnFocusRef,
 }: PlantRegistrationModalProps) {
   const shouldReduceMotion = useReducedMotion();
 
@@ -128,6 +134,13 @@ export default function PlantRegistrationModal({
     image_url: "",
     is_public_on_map: false,
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      setCustomSpeciesName(initialPlantName);
+      setFormData((prev) => ({ ...prev, space_type: initialSpaceType }));
+    }
+  }, [isOpen, initialPlantName, initialSpaceType]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -349,7 +362,7 @@ export default function PlantRegistrationModal({
     <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-canopy/50 backdrop-blur-sm z-50" />
-        <Dialog.Content aria-describedby={undefined} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-parchment rounded-2xl p-5 sm:p-6 max-w-lg w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-panel">
+        <Dialog.Content onCloseAutoFocus={(event) => { if (returnFocusRef?.current) { event.preventDefault(); returnFocusRef.current.focus(); } }} aria-describedby={undefined} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-parchment rounded-2xl p-5 sm:p-6 max-w-lg w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-panel">
             {/* Header */}
             <div className="flex items-start justify-between mb-5">
               <div>

@@ -1,3 +1,4 @@
+from app.services.recommendation.helpers import parse_temp_range
 from app.services.recommendation.models import ScoringModel
 from app.models.plants import PlantSpecies
 from typing import Dict, Any
@@ -22,17 +23,14 @@ class DeterministicScoringModel(ScoringModel):
         
         temp = env_profile.get("weather", {}).get("temperature", 20)
         eco_score = 0.5
-        if species.temperature_range:
-            try:
-                parts = species.temperature_range.split("-")
-                min_t, max_t = float(parts[0].replace("C","").strip()), float(parts[1].replace("C","").strip())
-                if min_t <= temp <= max_t:
-                    eco_score = 1.0
-                elif abs(temp - min_t) < 5 or abs(temp - max_t) < 5:
-                    eco_score = 0.7
-                else:
-                    eco_score = 0.2
-            except:
-                pass
-                
+        bounds = parse_temp_range(species.temperature_range)
+        if bounds:
+            low, high = bounds
+            if low <= temp <= high:
+                eco_score = 1.0
+            elif min(abs(temp - low), abs(temp - high)) < 5:
+                eco_score = 0.7
+            else:
+                eco_score = 0.2
+
         return 0.35 * pollution_score + 0.25 * inv_maint_score + 0.20 * growth_score + 0.20 * eco_score

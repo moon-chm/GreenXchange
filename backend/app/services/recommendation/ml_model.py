@@ -102,6 +102,7 @@ class PickleScoringModel(ScoringModel):
             f"-{air.get('no2', 20)}-{air.get('so2', 10)}-{air.get('co', 0.5)}"
             f"-{air.get('o3', 25)}-{weather.get('temperature', 25)}"
             f"-{weather.get('humidity', 60)}-{filters.get('space_type', 'Indoor')}"
+            f"-{filters.get('low_maintenance', False)}-{filters.get('experience_level', 'medium')}"
         )
 
     def _compute_scores(
@@ -116,11 +117,11 @@ class PickleScoringModel(ScoringModel):
 
         # Map space_type enum → training label
         raw_space = filters.get("space_type", "indoor")
-        space_map = {"indoor": "Indoor", "balcony": "Balcony", "outdoor": "Outdoor"}
+        space_map = {"indoor": "Indoor", "outdoor_balcony": "Balcony", "outdoor_garden": "Outdoor", "public_park": "Outdoor"}
         space_type = space_map.get(str(raw_space).lower(), "Outdoor")
 
         # Map maintenance preference → training label
-        raw_maint = filters.get("maintenance_preference", "medium")
+        raw_maint = ("low" if filters.get("low_maintenance") else filters.get("experience_level", "medium"))
         maint_map = {"low": "Low", "medium": "Medium", "high": "High"}
         maintenance = maint_map.get(str(raw_maint).lower(), "Medium")
 

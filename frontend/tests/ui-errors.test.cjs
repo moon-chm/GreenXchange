@@ -38,3 +38,19 @@ test('validation errors preserve useful field guidance and tolerate malformed it
   assert.equal(extractErrorMessage(null, 'Fallback'), 'Fallback');
   assert.equal(extractErrorMessage({ response: { status: 400, data: { detail: 'Photo too small' } } }), 'Photo too small');
 });
+
+const { rankingScore, coordinates } = load('src/lib/recommendations.ts');
+test('recommendation rankings preserve zero and scale fractional model output', () => {
+  assert.equal(rankingScore(0), 0);
+  assert.equal(rankingScore(0.735), 74);
+  assert.equal(rankingScore(undefined), null);
+  assert.equal(rankingScore(NaN), null);
+});
+test('recommendations require explicit finite coordinates and accept equator/prime meridian', () => {
+  assert.equal(coordinates('', ''), null);
+  assert.equal(coordinates('91', '0'), null);
+  assert.equal(coordinates('0', '181'), null);
+  assert.equal(coordinates('Infinity', '0'), null);
+  assert.deepEqual(coordinates('0', '0'), {lat: 0, lng: 0});
+  assert.deepEqual(coordinates('-90', '-180'), {lat: -90, lng: -180});
+});
