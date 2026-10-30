@@ -3,8 +3,10 @@
 GreenXchange is a decentralized, full-stack platform that incentivizes community-driven urban greening through AI-powered plant recommendations, computer-vision growth tracking, and an append-only cryptographic reward ledger.
 
 ## Features
+Plant evidence, review requirements, rewards and rollout details are documented in [PLANT_VERIFICATION.md](PLANT_VERIFICATION.md).
+
 - **AI Plant Recommendations**: Get plant recommendations based on local climate and environmental factors.
-- **Computer Vision Verification**: Upload plant growth images which are verified using an automated computer vision pipeline (ELA, anomaly detection).
+- **Plant Evidence Review**: Upload owned plant photos, receive AI observations, and compare growth evidence through an audited administrator review before rewards are credited.
 - **Reward Ledger**: A robust, append-only ledger that rewards users with GXC tokens for verified plant growth.
 - **Community Drives**: Discover and join localized tree planting drives using PostGIS spatial queries.
 - **Unified Dashboard**: Blazing fast, fault-tolerant unified dashboard gathering environment, plants, rewards, drives, and news.

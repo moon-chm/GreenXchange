@@ -14,7 +14,7 @@ interface Plant {
   common_name?: string;
   species_name: string;
   planting_date: string;
-  status: "verified" | "pending" | "rejected" | "active" | "inactive";
+  status: "verified" | "pending" | "manual_review" | "rejected" | "active" | "inactive";
   image_url?: string;
 }
 
@@ -211,7 +211,7 @@ export default function PlantPortfolioPanel({
                   Register New Plant
                 </span>
                 <span className="text-[11px] text-canopy/40 block mt-0.5">
-                  Earn +50 GXC Tokens with GPS Proof
+                  Earn 50 GXC after plant evidence approval
                 </span>
               </div>
             </motion.button>

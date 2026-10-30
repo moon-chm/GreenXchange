@@ -96,3 +96,12 @@ async def test_blocklist_token_roundtrip(fake_redis):
 async def test_different_jti_is_not_blocklisted(fake_redis):
     await rl.blocklist_token("jti-a", expires_in_days=1)
     assert await rl.is_token_blocklisted("jti-b") is False
+
+
+@pytest.mark.asyncio
+async def test_upload_limits_follow_account_and_do_not_share_nat_quota(fake_redis):
+    await rl.check_endpoint_rate_limit(_make_request("10.0.0.1"), "upload", 1, 3600, user_id="alice")
+    await rl.check_endpoint_rate_limit(_make_request("10.0.0.1"), "upload", 1, 3600, user_id="bob")
+    with pytest.raises(HTTPException) as err:
+        await rl.check_endpoint_rate_limit(_make_request("10.0.0.2"), "upload", 1, 3600, user_id="alice")
+    assert err.value.status_code == 429

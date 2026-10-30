@@ -11,9 +11,10 @@ def test_accepts_configured_frontend_url():
     assert settings.is_allowed_origin(settings.FRONTEND_URL) is True
 
 
-def test_accepts_greenxchange_onrender_subdomains():
+def test_only_explicitly_configured_host_is_allowed(monkeypatch):
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://greenxchange-frontend-dtf0.onrender.com")
     assert settings.is_allowed_origin("https://greenxchange-frontend-dtf0.onrender.com") is True
-    assert settings.is_allowed_origin("https://greenxchange-staging.onrender.com") is True
+    assert settings.is_allowed_origin("https://greenxchange-staging.onrender.com") is False
 
 
 def test_accepts_localhost_dev_origins():

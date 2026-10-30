@@ -2,7 +2,7 @@
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-type Status = "verified" | "pending" | "rejected" | "active" | "inactive";
+type Status = "verified" | "pending" | "manual_review" | "rejected" | "active" | "inactive";
 
 const statusConfig: Record<Status, { label: string; classes: string; pulse?: boolean }> = {
   verified: {
@@ -14,6 +14,7 @@ const statusConfig: Record<Status, { label: string; classes: string; pulse?: boo
     classes: "bg-amber-500/15 text-amber-700 border border-amber-400/30",
     pulse: true,
   },
+  manual_review: { label: "Awaiting review", classes: "bg-amber-500/15 text-amber-700 border border-amber-400/30" },
   rejected: {
     label: "Rejected",
     classes: "bg-red-500/15 text-red-700 border border-red-400/30",

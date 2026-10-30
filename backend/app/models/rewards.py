@@ -9,6 +9,7 @@ class RewardTransaction(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     plant_id = Column(UUID(as_uuid=True), ForeignKey("plants.id", ondelete="SET NULL"), nullable=True)
+    growth_update_id = Column(UUID(as_uuid=True), ForeignKey("growth_updates.id"), unique=True, nullable=True)
     
     points = Column(Integer, nullable=False)
     trigger_event = Column(String, nullable=False)

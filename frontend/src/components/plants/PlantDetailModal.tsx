@@ -22,8 +22,10 @@ interface Plant {
 
 interface GrowthUpdate {
   id: string;
-  status: "pending" | "verified" | "rejected";
+  status: "pending" | "manual_review" | "verified" | "rejected";
   stage: string | null;
+  reward_status?: string;
+  points_awarded?: number;
   timestamp: string;
   image_url: string;
   confidence_score?: number | null;
@@ -132,8 +134,8 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
 
   if (!plant) return null;
 
-  const displayStatus = (plant.status as "verified" | "pending" | "rejected") ?? "verified";
-  const displayPoints = plant.points_earned ?? 10;
+  const displayStatus = (plant.status as "verified" | "pending" | "manual_review" | "rejected") ?? "pending";
+  const displayPoints = plant.points_earned ?? 0;
   const qrUrl = getPublicUrl();
   const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrUrl)}`;
 
@@ -216,7 +218,7 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
                       <h3 className="font-display font-bold text-canopy text-xl">Delete Plant Asset?</h3>
                       <p className="text-xs text-canopy/70 font-sans leading-relaxed">
                         Are you sure you want to delete <strong className="text-canopy font-semibold">{plant.common_name || plant.species_name}</strong>?
-                        This will permanently delete its public verification passport, growth timeline, and rewards ledger records.
+                        This archives the plant from active views. Its evidence and reward history are retained.
                       </p>
                       <p className="text-xs font-bold text-rose-600 mt-2">This action cannot be undone.</p>
                     </div>
@@ -424,7 +426,7 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
                               </span>
                             </div>
                             <h4 className="font-display font-semibold text-canopy text-sm mt-1">
-                              {update.stage || "Unidentified Stage"}
+                              {update.stage || "Not assessed"}
                             </h4>
                             {update.confidence_score !== undefined && update.confidence_score !== null && (
                               <p className="text-[10px] text-fern font-mono font-medium">
@@ -436,6 +438,7 @@ export default function PlantDetailModal({ isOpen, onClose, plant, onDelete }: P
                                 {update.rejection_reason}
                               </p>
                             )}
+                            <p className="text-xs text-canopy/70">{update.points_awarded ?? 0} GXC · {(update.reward_status || "legacy").replaceAll("_", " ")}</p>
                             <p className="text-[9px] text-canopy/40 truncate">ID: {update.id.substring(0, 8)}...</p>
                           </div>
                         </div>

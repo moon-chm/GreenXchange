@@ -35,6 +35,9 @@ export default function GrowthUpdatePage() {
   const [error, setError] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<{
     status: string;
+    reward_status?: string;
+    points_awarded?: number;
+    rejection_reason?: string;
     growth_stage?: string;
     confidence_score?: number;
     analysis?: AnalysisResult;
@@ -108,6 +111,9 @@ export default function GrowthUpdatePage() {
           growth_stage: res?.data?.growth_stage,
           confidence_score: res?.data?.confidence_score,
           analysis: res?.data?.analysis,
+          reward_status: res.data.reward_status,
+          points_awarded: res.data.points_awarded,
+          rejection_reason: res.data.rejection_reason,
         });
 
       } catch (err: unknown) {
@@ -144,7 +150,7 @@ export default function GrowthUpdatePage() {
               {isVerified ? "Growth Update Verified!" : successResult.status.toUpperCase() === "REJECTED" ? "Update Not Verified" : "Update Submitted for Review"}
             </h2>
             <p className="text-sm text-canopy/70 mt-1">
-              {analysis?.summary_reason || "Your update has been saved. Review the results below."}
+              {successResult.rejection_reason || analysis?.summary_reason || "Your update has been saved. Review the results below."}
             </p>
           </div>
 
@@ -176,7 +182,7 @@ export default function GrowthUpdatePage() {
                 <span>Rewards</span>
               </div>
               <span className="text-xs font-bold text-fern">
-                {isVerified ? "Check your rewards balance" : "Not confirmed"}
+                {`${successResult.points_awarded ?? 0} GXC · ${(successResult.reward_status || "pending_review").replaceAll("_", " ")}`}
               </span>
             </div>
           </div>
@@ -244,7 +250,7 @@ export default function GrowthUpdatePage() {
             </div>
             <div>
               <p className="text-xs font-semibold text-canopy uppercase tracking-wider">
-                Proof of Presence GPS
+                Submitted location
               </p>
               <p className="text-xs text-canopy/60 mt-0.5">{locStatus}</p>
             </div>

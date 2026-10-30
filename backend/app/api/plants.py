@@ -72,10 +72,11 @@ async def register_plant(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # check_endpoint_rate_limit already swallows internal errors (e.g. Redis being
-    # down) and only raises HTTPException(429) when the caller is over the limit —
-    # that exception must propagate here, not be caught, or the limit never fires.
-    await check_endpoint_rate_limit(request, "plant_register", max_requests=100, window_seconds=3600)
+    # Propagate both rate-limit and unavailable-limiter responses.
+    await check_endpoint_rate_limit(request, "plant_register", max_requests=100, window_seconds=3600, user_id=str(current_user.id))
+
+    from app.services.plant_evidence import consume_photo
+    photo = await consume_photo(db, current_user.id, req.image_url)
 
     # The species name drives species resolution; common_name is a personal
     # nickname (e.g. "Office Mango") and must never be used to match/create a
@@ -107,7 +108,7 @@ async def register_plant(
     if not species and plant_name:
         p_root = clean_species_name(plant_name)
         if p_root:
-            result = await db.execute(select(PlantSpecies))
+            result = await db.execute(select(PlantSpecies).where(func.coalesce(PlantSpecies.data_source, "") != "User-Registered Species"))
             species = next(
                 (s for s in result.scalars().all() if clean_species_name(s.common_name) == p_root),
                 None,
@@ -122,9 +123,9 @@ async def register_plant(
             scientific_name=f"{final_name} ({uuid.uuid4().hex[:6]})",
             genus="Plantae",
             family="Flora",
-            co2_absorption_rate=12.5,
-            pm25_absorption_rate=0.5,
-            voc_absorption_rate=0.4,
+            co2_absorption_rate=None,
+            pm25_absorption_rate=None,
+            voc_absorption_rate=None,
             toxicity_level=ToxicityLevel.NONE,
             allergen_risk=AllergenRisk.NONE,
             maintenance_level=MaintenanceLevel.LOW,
@@ -138,8 +139,7 @@ async def register_plant(
             data_source="User-Registered Species",
         )
         db.add(species)
-        await db.commit()
-        await db.refresh(species)
+        await db.flush()
 
     plant_uuid = uuid.uuid4()
     scan_id = generate_scan_id(plant_uuid)
@@ -159,22 +159,16 @@ async def register_plant(
         anchor_location=f'SRID=4326;POINT({req.lng} {req.lat})'
     )
     
-    try:
-        db.add(plant)
-        await db.commit()
-        await db.refresh(plant)
-    except Exception as e:
-        logger.error(f"Error saving plant: {e}", exc_info=True)
-        await db.rollback()
-        raise HTTPException(status_code=400, detail="Failed to save plant. Please verify your coordinates and inputs.")
+    db.add(plant)
+    await db.flush()
+    from app.models.growth import GrowthUpdate
+    from app.models.enums import VerificationStatus
+    db.add(GrowthUpdate(plant_id=plant.id, photo_id=photo.id, submission_kind="registration",
+        image_url=photo.image_url, submitted_gps=plant.registered_location,
+        verification_status=VerificationStatus.MANUAL_REVIEW,
+        rejection_reason="New plant awaiting evidence review. No points awarded yet."))
+    await db.commit()
 
-    # Automatically award 50 GXC coins for registration!
-    try:
-        from app.services.rewards import credit_plant_registration_reward
-        await credit_plant_registration_reward(db, user_id=current_user.id, plant_id=plant.id, points=50)
-    except Exception as rew_err:
-        logger.warning(f"Plant reward crediting notice: {rew_err}")
-    
     qr_b64 = generate_qr_code(scan_id)
     
     return PlantRegistrationResponse(
@@ -192,32 +186,16 @@ async def upload_plant_image(
     request: Request,
     image: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Validate and durably store a plant photo before plant registration."""
-    await check_endpoint_rate_limit(request, "plant_image_upload", max_requests=30, window_seconds=3600)
-    image_bytes = await image.read(MAX_PLANT_IMAGE_BYTES + 1)
-    if len(image_bytes) > MAX_PLANT_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
-    if not image_bytes:
-        raise HTTPException(status_code=400, detail="Please capture a valid plant photo")
-
-    from app.services.media import sanitize_image, upload_to_minio
-    try:
-        sanitized_bytes = await run_in_threadpool(sanitize_image, image_bytes)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    object_name = f"plant-images/{current_user.id}/{uuid.uuid4().hex}.jpg"
-    try:
-        image_url = await run_in_threadpool(upload_to_minio, object_name, sanitized_bytes, "image/jpeg")
-    except RuntimeError as exc:
-        logger.error("Plant image storage unavailable: %s", exc)
-        raise HTTPException(status_code=503, detail="Image storage is temporarily unavailable") from exc
-    return {"image_url": image_url}
+    await check_endpoint_rate_limit(request, "plant_image_upload", max_requests=10, window_seconds=3600, user_id=str(current_user.id))
+    from app.services.plant_evidence import save_photo
+    photo = await save_photo(db, current_user.id, await image.read(MAX_PLANT_IMAGE_BYTES + 1))
+    return {"image_url": photo.image_url, "analysis": photo.analysis}
 
 @router.get("/species")
 async def get_all_species(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(PlantSpecies))
+    result = await db.execute(select(PlantSpecies).where(func.coalesce(PlantSpecies.data_source, "") != "User-Registered Species"))
     return result.scalars().all()
 
 from app.models.growth import GrowthUpdate
@@ -227,6 +205,10 @@ async def get_my_plants(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    from app.models.rewards import RewardTransaction
+    earned = (select(func.coalesce(func.sum(RewardTransaction.points), 0))
+        .where(RewardTransaction.plant_id == Plant.id, RewardTransaction.points > 0)
+        .correlate(Plant).scalar_subquery())
     latest_status_subquery = (
         select(GrowthUpdate.verification_status)
         .where(GrowthUpdate.plant_id == Plant.id)
@@ -240,6 +222,7 @@ async def get_my_plants(
             func.ST_Y(Plant.registered_location).label("lat"),
             func.ST_X(Plant.registered_location).label("lng"),
             latest_status_subquery.label("latest_status"),
+            earned.label("points_earned"),
         )
         .options(selectinload(Plant.species))
         .filter(Plant.owner_id == current_user.id, Plant.deleted_at.is_(None))
@@ -249,7 +232,7 @@ async def get_my_plants(
     portfolio = []
     for row in rows:
         plant = row.Plant
-        status_str = row.latest_status.value.lower() if row.latest_status else "verified"
+        status_str = row.latest_status.value.lower() if row.latest_status else "pending"
 
         species_display = plant.species.common_name if plant.species else "Urban Plant"
         common_display = plant.common_name or species_display
@@ -269,6 +252,7 @@ async def get_my_plants(
                 lat=row.lat,
                 lng=row.lng,
                 status=status_str,
+                points_earned=int(row.points_earned),
                 image_url=_browser_image_url(plant.image_url),
                 is_public_on_map=plant.is_public_on_map
             )
@@ -318,10 +302,10 @@ async def get_community_map_trees(
         owner_first_name = owner_full_name.strip().split()[0]
         
         age_days, age_formatted = _format_plant_age(plant.planting_date)
-        estimated_carbon = round(max(5.0, age_days * 0.06), 1)
+        estimated_carbon = None  # No measured sequestration data
 
         latest_status = row.latest_status
-        status_str = latest_status.value.lower() if latest_status else "verified"
+        status_str = latest_status.value.lower() if latest_status else "pending"
 
         is_owner = False
         if current_user and current_user.id == plant.owner_id:
@@ -551,6 +535,7 @@ async def generate_nursery_care_guide(
 
 @router.post("/ai-verify")
 async def ai_verify_image(
+    request: Request,
     image: UploadFile = File(...),
     current_user: User = Depends(get_current_user)
 ):
@@ -560,13 +545,15 @@ async def ai_verify_image(
     - Model 2: Plant Health assessment
     - ELA & Growth Stage analysis
     """
+    await check_endpoint_rate_limit(request, "plant_ai", max_requests=10, window_seconds=3600, user_id=str(current_user.id))
     from app.services.media import sanitize_image
     try:
         image_bytes = await image.read(10 * 1024 * 1024 + 1)
         if len(image_bytes) > 10 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
         image_bytes = await run_in_threadpool(sanitize_image, image_bytes)
-        analysis = await run_in_threadpool(_analyze_plant_image, image_bytes)
+        from app.services.plant_evidence import observe_photo
+        analysis = await run_in_threadpool(observe_photo, image_bytes)
         return {
             "status": "success",
             "analysis": analysis
@@ -582,6 +569,7 @@ async def ai_verify_image(
 
 @router.post("/{plant_id}/growth")
 async def submit_growth_update_via_plants(
+    request: Request,
     plant_id: str,
     lat: float = Form(..., ge=-90, le=90),
     lng: float = Form(..., ge=-180, le=180),
@@ -597,6 +585,7 @@ async def submit_growth_update_via_plants(
     from app.api.growth import submit_growth_update
     # Re-read the image file since UploadFile is a stream
     return await submit_growth_update(
+        request=request,
         plant_id=plant_id,
         lat=lat,
         lng=lng,

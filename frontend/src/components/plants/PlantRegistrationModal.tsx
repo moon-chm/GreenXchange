@@ -326,7 +326,7 @@ export default function PlantRegistrationModal({
 
                       const body = new FormData();
                       body.append("image", file);
-                      api.post("/plants/upload-image", body, { headers: { "Content-Type": undefined } })
+                      api.post("/plants/upload-image", body, { headers: { "Content-Type": undefined }, timeout: 90000 })
                         .then((res) => {
                           if (!res.data?.image_url) throw new Error("The photo upload did not return a saved image.");
                           if (imageUploadIdRef.current === uploadId) {
@@ -629,7 +629,7 @@ export default function PlantRegistrationModal({
                     <p className="text-sm text-canopy/60 max-w-xs">
                       <span className="font-medium text-canopy">
                         {formData.common_name || customSpeciesName || "Plant"}
-                      </span> has been submitted for verification. Your plant photo & passport are live.
+                      </span> is awaiting evidence review. The 50 GXC registration reward is credited only after approval.
                     </p>
                   </div>
                   <div className="text-xs font-mono text-canopy/40 bg-sage/10 px-3 py-1.5 rounded-lg">

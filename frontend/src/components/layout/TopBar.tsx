@@ -56,7 +56,7 @@ export default function TopBar() {
               </div>
 
               <nav className="flex-1 py-4 px-3 space-y-0.5">
-                {navItems.map(({ href, icon: Icon, label }) => {
+                {[...navItems, ...(user?.role === "ADMIN" ? [{ href: "/reviews", icon: Leaf, label: "Plant Reviews" }] : [])].map(({ href, icon: Icon, label }) => {
                   const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
                   return (
                     <Link key={href} href={href} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}>

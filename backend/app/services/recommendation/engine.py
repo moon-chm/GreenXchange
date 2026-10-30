@@ -18,6 +18,7 @@ def get_scoring_model():
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 
 class RecommendationEngine:
     def __init__(self, db_session: AsyncSession):
@@ -27,7 +28,7 @@ class RecommendationEngine:
     async def run(self, filters: RecommendationRequest, env_profile: Dict[str, Any]) -> List[SpeciesCard]:
         if self.model is None:
             self.model = get_scoring_model()
-        result = await self.db.execute(select(PlantSpecies))
+        result = await self.db.execute(select(PlantSpecies).where(func.coalesce(PlantSpecies.data_source, "") != "User-Registered Species"))
         all_species = result.scalars().all()
         
         valid_species = []
@@ -76,7 +77,7 @@ class RecommendationEngine:
     async def analyze_plant_suitability(self, req: PlantAnalysisRequest, env_profile: Dict[str, Any]) -> PlantAnalysisResponse:
         # Only use catalog-backed facts. Unknown names must not receive invented
         # taxonomy, safety guarantees, carbon estimates or suitability scores.
-        result = await self.db.execute(select(PlantSpecies))
+        result = await self.db.execute(select(PlantSpecies).where(func.coalesce(PlantSpecies.data_source, "") != "User-Registered Species"))
         query = normalize_name(req.plant_name)
         matches = [s for s in result.scalars().all()
                    if query in (normalize_name(s.common_name), normalize_name(s.scientific_name))]

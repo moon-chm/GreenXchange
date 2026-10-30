@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import io
 import logging
@@ -71,7 +72,7 @@ class PyTorchCVModel(CVModel):
         tree_model_path: Optional[str] = None,
         health_model_path: Optional[str] = None
     ):
-        self.device = torch.device("cuda" if (TORCH_AVAILABLE and torch.cuda.is_available()) else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if TORCH_AVAILABLE else None
         self.tree_model: Optional[nn.Module] = None
         self.health_model: Optional[nn.Module] = None
         
@@ -210,7 +211,7 @@ class PyTorchCVModel(CVModel):
                 "reason": "Authentic photo" if is_valid else "Potential image manipulation / ELA anomaly detected"
             }
         except Exception as e:
-            return {"pass": True, "confidence": 0.85, "ela_score": 0.0, "reason": f"Fallback: {str(e)}"}
+            raise RuntimeError("Photo analysis unavailable") from e
 
     def detect_tree(self, image_bytes: bytes) -> Dict[str, Any]:
         """
@@ -243,8 +244,7 @@ class PyTorchCVModel(CVModel):
             except Exception as e:
                 logger.error(f"Error during tree detection inference: {e}")
 
-        # Fallback to ExG vegetation detection
-        return self.detect_plant(image_bytes)
+        raise RuntimeError("Plant detection model unavailable")
 
     def assess_health(self, image_bytes: bytes) -> Dict[str, Any]:
         """
@@ -279,15 +279,7 @@ class PyTorchCVModel(CVModel):
             except Exception as e:
                 logger.error(f"Error during plant health inference: {e}")
 
-        # Fallback heuristic
-        return {
-            "pass": True,
-            "is_healthy": True,
-            "health_status": "Healthy",
-            "confidence": 0.90,
-            "probabilities": {"healthy": 0.90, "unhealthy": 0.10},
-            "reason": "Health assessed via default baseline."
-        }
+        raise RuntimeError("Plant health model unavailable")
 
     def detect_plant(self, image_bytes: bytes, min_foliage_ratio: float = 0.02) -> Dict[str, Any]:
         """
@@ -316,78 +308,34 @@ class PyTorchCVModel(CVModel):
                 "reason": f"Plant foliage detected ({foliage_ratio*100:.1f}% coverage)" if has_plant else "No significant plant foliage detected"
             }
         except Exception as e:
-            return {"pass": True, "is_tree": True, "confidence": 0.85, "foliage_coverage_pct": 5.0, "reason": f"Fallback: {str(e)}"}
+            raise ValueError("Cannot inspect photo") from e
 
     def classify_growth_stage(self, image_bytes: bytes, prior_image: Optional[bytes] = None) -> Dict[str, Any]:
-        """
-        Classifies growth stage (Seedling, Vegetative, Flowering, Mature) based on
-        canopy coverage index and feature statistics.
-        """
-        plant_det = self.detect_plant(image_bytes)
-        coverage = plant_det.get("foliage_coverage_pct", 15.0)
-        
-        if coverage < 8.0:
-            stage = "Seedling"
-        elif coverage < 25.0:
-            stage = "Vegetative"
-        elif coverage < 45.0:
-            stage = "Flowering"
-        else:
-            stage = "Mature"
-            
-        return {
-            "pass": True,
-            "confidence": 0.95,
-            "stage": stage,
-            "coverage_pct": coverage
-        }
+        # Framing/lighting can change coverage without biological growth.
+        return {"pass": False, "confidence": None, "stage": "Not assessed",
+                "coverage_pct": self.detect_plant(image_bytes).get("foliage_coverage_pct")}
 
     def verify_species(self, image_bytes: bytes, species_ref: str) -> Dict[str, Any]:
-        return {"pass": True, "confidence": 0.95, "matched_species": species_ref}
+        return {"pass": False, "confidence": None, "matched_species": None}
 
     def analyze_plant_image(self, image_bytes: bytes) -> Dict[str, Any]:
-        """
-        Runs comprehensive 4-pillar evaluation:
-        1. ELA Authenticity Check
-        2. Model 1 Tree / Not-Tree Verification
-        3. Model 2 Plant Health Diagnosis
-        4. Growth Stage & Canopy Coverage
-        """
-        ela_res = self.check_ela(image_bytes)
-        tree_res = self.detect_tree(image_bytes)
-        health_res = self.assess_health(image_bytes)
-        stage_res = self.classify_growth_stage(image_bytes)
-
-        is_tree = tree_res.get("is_tree", tree_res.get("pass", False))
-        ela_pass = ela_res.get("pass", True)
-        
-        # Overall verification pass requires authentic image + confirmed tree
-        is_verified = bool(is_tree and ela_pass)
-
-        reasons = []
-        if not ela_pass:
-            reasons.append(ela_res.get("reason", "Image tampering detected"))
-        if not is_tree:
-            reasons.append(tree_res.get("reason", "No valid tree detected"))
-        if is_verified:
-            health_note = f"Health: {health_res.get('health_status', 'Healthy')}"
-            stage_note = f"Stage: {stage_res.get('stage', 'Vegetative')}"
-            reasons.append(f"Verified tree photo ({health_note}, {stage_note})")
-
+        if self.tree_model is None or self.health_model is None:
+            raise RuntimeError("Plant verification models unavailable")
+        tree = self.detect_tree(image_bytes)
+        health = self.assess_health(image_bytes)
         return {
-            "is_verified": is_verified,
-            "is_tree": is_tree,
-            "tree_confidence": tree_res.get("confidence", 0.0),
-            "tree_probabilities": tree_res.get("probabilities", {}),
-            "health_status": health_res.get("health_status", "Healthy"),
-            "is_healthy": health_res.get("is_healthy", True),
-            "health_confidence": health_res.get("confidence", 0.0),
-            "health_probabilities": health_res.get("probabilities", {}),
-            "growth_stage": stage_res.get("stage", "Vegetative"),
-            "foliage_coverage_pct": stage_res.get("coverage_pct", 10.0),
-            "ela_valid": ela_pass,
-            "ela_score": ela_res.get("ela_score", 0.0),
-            "summary_reason": "; ".join(reasons)
+            "is_verified": False,
+            "requires_review": True,
+            "model_version": "resnet18-dual-v1-observation",
+            "is_tree": tree["is_tree"],
+            "tree_confidence": tree["confidence"],
+            "tree_probabilities": tree.get("probabilities", {}),
+            "health_status": health["health_status"],
+            "is_healthy": health["is_healthy"],
+            "health_confidence": health["confidence"],
+            "health_probabilities": health.get("probabilities", {}),
+            "growth_stage": "Not assessed",
+            "summary_reason": "AI photo observations only. Plant identity and growth require review before points are awarded.",
         }
 
 

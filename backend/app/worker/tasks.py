@@ -48,92 +48,12 @@ def refresh_active_locations():
         
     return f"Dispatched {len(unique_tiles)} environment refreshes."
 
-async def run_verification(update_id_str: str):
-    from app.db.session import AsyncSessionLocal
-    from app.models.growth import GrowthUpdate
-    from app.models.enums import VerificationStatus
-    from app.services.cv.models import get_cv_model
-    import uuid
-    
-    cv_model = get_cv_model()
-    
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(GrowthUpdate).filter(GrowthUpdate.id == uuid.UUID(update_id_str))
-        )
-        update = result.scalars().first()
-        if not update:
-            return
-            
-        from app.services.media import get_minio_client, BUCKET_NAME
-
-        obj_name = update.image_url.split("/")[-1]
-
-        try:
-            from app.models.plants import Plant
-            plant_result = await session.execute(select(Plant).filter(Plant.id == update.plant_id))
-            plant = plant_result.scalars().first()
-
-            minio_client = get_minio_client()
-            if minio_client is None:
-                raise RuntimeError("MinIO client unavailable for deferred CV verification")
-
-            response = minio_client.get_object(BUCKET_NAME, obj_name)
-            image_bytes = response.read()
-            response.close()
-            response.release_conn()
-            
-            # Run comprehensive 4-pillar dual PyTorch CV verification
-            analysis = cv_model.analyze_plant_image(image_bytes)
-            
-            is_verified = analysis.get("is_verified", False)
-            tree_conf = analysis.get("tree_confidence", 0.95)
-            health_status = analysis.get("health_status", "Healthy")
-            growth_stage = analysis.get("growth_stage", "Vegetative")
-            summary_reason = analysis.get("summary_reason", "")
-            
-            if is_verified:
-                update.verification_status = VerificationStatus.VERIFIED
-                update.confidence_score = round(tree_conf, 4)
-                update.growth_stage_label = f"{growth_stage} ({health_status})"
-                update.cv_model_version = "resnet18-dual-v1"
-                update.rejection_reason = None
-            else:
-                update.verification_status = VerificationStatus.REJECTED
-                update.confidence_score = round(tree_conf, 4)
-                update.growth_stage_label = growth_stage
-                update.cv_model_version = "resnet18-dual-v1"
-                update.rejection_reason = summary_reason or "Automated CV verification checks failed"
-                
-            await session.commit()
-            
-            if is_verified and plant:
-                process_verified_reward.delay(str(plant.owner_id), str(plant.id))
-                
-        except Exception as e:
-            update.verification_status = VerificationStatus.MANUAL_REVIEW
-            update.rejection_reason = f"Error processing: {str(e)}"
-            await session.commit()
-
+# Kept as safe no-ops so already queued legacy jobs cannot bypass human review.
 @celery_app.task
 def verify_growth_update(update_id: str):
-    asyncio.run(run_verification(update_id))
-    return f"Verified {update_id}"
+    return "Submission requires an audited review decision"
+
 
 @celery_app.task
 def process_verified_reward(user_id_str: str, plant_id_str: str):
-    from app.services.rewards import credit_growth_update_reward
-    from app.db.session import AsyncSessionLocal
-    import uuid
-    
-    async def _run():
-        async with AsyncSessionLocal() as session:
-            await credit_growth_update_reward(
-                session, 
-                uuid.UUID(user_id_str), 
-                uuid.UUID(plant_id_str)
-            )
-            
-    asyncio.run(_run())
-    return f"Processed reward for User:{user_id_str} Plant:{plant_id_str}"
-
+    return "Rewards are issued atomically by the review workflow"

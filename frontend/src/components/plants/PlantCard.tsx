@@ -14,7 +14,7 @@ interface Plant {
   scientific_name?: string;
   qr_scan_id?: string;
   scan_id?: string;
-  status?: "verified" | "pending" | "rejected" | "active" | "inactive";
+  status?: "verified" | "pending" | "manual_review" | "rejected" | "active" | "inactive";
   points_earned?: number;
   updated_at?: string;
   planting_date?: string;
@@ -78,9 +78,9 @@ export default function PlantCard({ plant, onClick }: PlantCardProps) {
     : { whileHover: { y: -4, transition: { duration: 0.2, ease: "easeOut" } } };
 
   // Safeguard fields to support different API shapes (/plants/my and general portfolio schemas)
-  const displayStatus = plant.status ?? "verified";
+  const displayStatus = plant.status ?? "pending";
   const displayScanId = plant.scan_id || plant.qr_scan_id || "N/A";
-  const displayPoints = plant.points_earned ?? 10; // Default GXC points per registration
+  const displayPoints = plant.points_earned ?? 0;
   const displayDate = plant.updated_at || plant.planting_date || new Date().toISOString();
 
   return (

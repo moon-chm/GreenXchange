@@ -32,7 +32,7 @@ export interface CommunityTree {
   lat: number;
   lng: number;
   image_url?: string;
-  estimated_carbon_kg?: number;
+  estimated_carbon_kg?: number | null;
   status?: string;
 }
 
@@ -83,8 +83,8 @@ export default function PlantMap({ myPlants, onSelectPlant }: PlantMapProps) {
         lat: p.lat,
         lng: p.lng,
         image_url: p.image_url,
-        estimated_carbon_kg: 18.5,
-        status: p.status || "verified",
+        estimated_carbon_kg: null,
+        status: p.status || "pending",
       }));
 
   // Initialize Map
@@ -322,7 +322,7 @@ export default function PlantMap({ myPlants, onSelectPlant }: PlantMapProps) {
                   <span className="font-semibold uppercase tracking-wider text-[10px]">Carbon</span>
                 </div>
                 <p className="font-bold text-fern">
-                  {selectedTree.estimated_carbon_kg ?? 18.5} kg CO₂
+                  {selectedTree.estimated_carbon_kg != null ? `${selectedTree.estimated_carbon_kg} kg CO₂` : "Not measured"}
                 </p>
               </div>
             </div>

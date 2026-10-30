@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 from app.models.enums import SpaceType
@@ -14,8 +14,18 @@ class PlantRegistrationRequest(BaseModel):
     lng: float = Field(..., ge=-180, le=180)
     planting_date: datetime
     space_type: SpaceType
-    image_url: Optional[str] = None
+    image_url: str = Field(..., min_length=1)
     is_public_on_map: bool = False
+
+    @field_validator("planting_date")
+    @classmethod
+    def validate_date(cls, value):
+        from datetime import timezone
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        if value > datetime.now(timezone.utc):
+            raise ValueError("Planting date cannot be in the future")
+        return value
 
 class PlantRegistrationResponse(BaseModel):
     id: str
@@ -45,7 +55,8 @@ class PlantPortfolioResponse(BaseModel):
     space_type: SpaceType
     lat: float
     lng: float
-    status: str = "verified"
+    status: str = "pending"
+    points_earned: int = 0
     image_url: Optional[str] = None
     is_public_on_map: bool = False
 
@@ -63,8 +74,8 @@ class CommunityMapPlantResponse(BaseModel):
     lat: float
     lng: float
     image_url: Optional[str] = None
-    estimated_carbon_kg: float
-    status: str = "verified"
+    estimated_carbon_kg: Optional[float] = None
+    status: str = "pending"
 
 
 

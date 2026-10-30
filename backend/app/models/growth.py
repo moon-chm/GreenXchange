@@ -11,6 +11,8 @@ class GrowthUpdate(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     plant_id = Column(UUID(as_uuid=True), ForeignKey("plants.id", ondelete="CASCADE"), nullable=False)
     image_url = Column(String, nullable=False)
+    photo_id = Column(UUID(as_uuid=True), ForeignKey("plant_photos.id"), unique=True, nullable=True)
+    submission_kind = Column(String, nullable=False, default="growth", server_default="growth")
     
     submitted_gps = Column(Geometry(geometry_type='POINT', srid=4326), nullable=False)
     exif_gps = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)

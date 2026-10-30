@@ -97,13 +97,15 @@ async def is_token_blocklisted(jti: str) -> bool:
         logger.warning(f"Is token blocklisted error: {e}")
         return False
 
-async def check_endpoint_rate_limit(request: Request, key_prefix: str, max_requests: int, window_seconds: int):
+async def check_endpoint_rate_limit(request: Request, key_prefix: str, max_requests: int, window_seconds: int, user_id: str | None = None):
     if not redis_client:
         raise HTTPException(status_code=503, detail="Rate limiting is temporarily unavailable")
     try:
         ip = _get_client_ip(request)
-        user_id = request.state.user.id if hasattr(request.state, "user") and request.state.user else "anon"
-        rate_key = f"rate:{key_prefix}:{ip}:{user_id}"
+        # Authenticated upload limits follow the account across IP changes and
+        # do not exhaust every user's quota on a shared campus/mobile network.
+        subject = f"user:{user_id}" if user_id else f"ip:{ip}"
+        rate_key = f"rate:{key_prefix}:{subject}"
         
         current = await redis_client.incr(rate_key)
         if current == 1:

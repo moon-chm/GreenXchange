@@ -15,7 +15,7 @@ import { staggerContainer, fadeUp } from "@/lib/motion";
 
 const PlantMap = dynamic(() => import("@/components/plants/PlantMap"), { ssr: false });
 
-type FilterStatus = "all" | "verified" | "pending" | "rejected";
+type FilterStatus = "all" | "verified" | "pending" | "manual_review" | "rejected";
 type SortOption = "date" | "species";
 
 interface Plant {
@@ -28,7 +28,7 @@ interface Plant {
   space_type: string;
   lat: number;
   lng: number;
-  status?: "verified" | "pending" | "rejected";
+  status?: "verified" | "pending" | "manual_review" | "rejected";
   points_earned?: number;
   updated_at?: string;
 }

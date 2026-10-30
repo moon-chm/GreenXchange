@@ -2,7 +2,8 @@ import io
 import os
 import logging
 import warnings
-from PIL import Image
+from PIL import Image, ImageOps
+import urllib3
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,8 @@ def get_minio_client():
                 endpoint,
                 access_key=access_key,
                 secret_key=secret_key,
-                secure=secure
+                secure=secure,
+                http_client=urllib3.PoolManager(timeout=urllib3.Timeout(connect=5, read=20), retries=1),
             )
         except Exception as e:
             logger.warning(f"MinIO client init warning: {e}")
@@ -38,6 +40,8 @@ def get_minio_client():
     return _minio_client
 
 def ensure_bucket(client):
+    if client is None:
+        return False
     try:
         if client and not client.bucket_exists(BUCKET_NAME):
             client.make_bucket(BUCKET_NAME)
@@ -57,7 +61,8 @@ def get_presigned_media_url(object_name: str, expires_seconds: int = 3600) -> st
     if secure is None:
         secure = settings.MINIO_SECURE
     public_client = Minio(endpoint, access_key=settings.MINIO_ACCESS_KEY,
-                          secret_key=settings.MINIO_SECRET_KEY, secure=secure)
+                          secret_key=settings.MINIO_SECRET_KEY, secure=secure,
+                          http_client=urllib3.PoolManager(timeout=urllib3.Timeout(connect=5, read=20), retries=1))
     return public_client.presigned_get_object(BUCKET_NAME, object_name, expires=timedelta(seconds=expires_seconds))
 
 def sanitize_image(image_bytes: bytes) -> bytes:
@@ -71,7 +76,7 @@ def sanitize_image(image_bytes: bytes) -> bytes:
             if image.width * image.height > 20_000_000:
                 raise ValueError("Image dimensions exceed the 20 megapixel limit")
             image.load()
-            image = image.convert("RGB")
+            image = ImageOps.exif_transpose(image).convert("RGB")
         out_buf = io.BytesIO()
         image.save(out_buf, format="JPEG", quality=85)
         return out_buf.getvalue()
@@ -101,3 +106,13 @@ def upload_to_minio(object_name: str, image_bytes: bytes, content_type: str = "i
     except Exception as exc:
         logger.error("MinIO upload failed: %s", exc)
         raise RuntimeError("Growth image storage is unavailable") from exc
+
+
+def remove_unreferenced_upload(object_name: str) -> None:
+    """Compensate only after a known database rollback, never an ambiguous commit."""
+    client = get_minio_client()
+    if client is not None:
+        try:
+            client.remove_object(BUCKET_NAME, object_name)
+        except Exception:
+            logger.exception("Could not remove unreferenced upload %s", object_name)

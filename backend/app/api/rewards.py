@@ -91,23 +91,7 @@ async def get_balance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    from app.models.plants import Plant
-    from app.services.rewards import credit_plant_registration_reward, get_user_balance
-
-    # Ensure any previously registered plants have rewards credited
-    plants_res = await db.execute(select(Plant).filter(Plant.owner_id == current_user.id))
-    user_plants = plants_res.scalars().all()
-
-    for p in user_plants:
-        tx_check = await db.execute(
-            select(RewardTransaction).filter(
-                RewardTransaction.user_id == current_user.id,
-                RewardTransaction.plant_id == p.id,
-                RewardTransaction.trigger_event == "PLANT_REGISTERED"
-            )
-        )
-        if not tx_check.scalar_one_or_none():
-            await credit_plant_registration_reward(db, user_id=current_user.id, plant_id=p.id, points=50)
+    from app.services.rewards import get_user_balance
 
     result = await db.execute(
         select(RewardTransaction)

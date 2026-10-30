@@ -133,6 +133,11 @@ async def fetch_environment(lat, lng):
 from app.models.growth import GrowthUpdate
 
 async def fetch_plants(user_id, db):
+    from app.api.plants import _browser_image_url
+    from app.models.rewards import RewardTransaction
+    earned = (select(func.coalesce(func.sum(RewardTransaction.points), 0))
+        .where(RewardTransaction.plant_id == Plant.id, RewardTransaction.points > 0)
+        .correlate(Plant).scalar_subquery())
     latest_status_subquery = (
         select(GrowthUpdate.verification_status)
         .where(GrowthUpdate.plant_id == Plant.id)
@@ -146,6 +151,7 @@ async def fetch_plants(user_id, db):
             func.ST_Y(Plant.registered_location).label("lat"),
             func.ST_X(Plant.registered_location).label("lng"),
             latest_status_subquery.label("latest_status"),
+            earned.label("points_earned"),
         )
         .options(selectinload(Plant.species))
         .filter(Plant.owner_id == user_id, Plant.deleted_at.is_(None))
@@ -155,7 +161,7 @@ async def fetch_plants(user_id, db):
     plants_data = []
     for row in rows:
         plant = row.Plant
-        status_str = row.latest_status.value.lower() if row.latest_status else "verified"
+        status_str = row.latest_status.value.lower() if row.latest_status else "pending"
 
         plants_data.append({
             "id": str(plant.id),
@@ -167,7 +173,8 @@ async def fetch_plants(user_id, db):
             "lat": row.lat,
             "lng": row.lng,
             "status": status_str,
-            "image_url": plant.image_url
+            "points_earned": int(row.points_earned),
+            "image_url": _browser_image_url(plant.image_url)
         })
 
 
@@ -176,14 +183,8 @@ async def fetch_plants(user_id, db):
 
 
 async def fetch_rewards(user_id, db):
-    result = await db.execute(
-        select(RewardTransaction.balance_snapshot)
-        .filter(RewardTransaction.user_id == user_id)
-        .order_by(RewardTransaction.created_at.desc())
-        .limit(1)
-    )
-    balance = result.scalar() or 0
-    return {"balance": balance}
+    from app.services.rewards import get_user_balance
+    return {"balance": await get_user_balance(db, user_id)}
 
 async def fetch_drives(lat, lng, db):
     from geoalchemy2 import Geography
@@ -295,16 +296,19 @@ async def get_dashboard(
     use_lng = lng if lng is not None else current_user.location_lng
     has_location = use_lat is not None and use_lng is not None
     
-    results = await asyncio.gather(
+    # Each database module owns its session; timed-out queries cannot poison siblings.
+    from app.db.session import AsyncSessionLocal
+    async def isolated(fetch, *args):
+        async with AsyncSessionLocal() as session:
+            return await fetch(*args, session)
+    env_res, plants_res, rewards_res, drives_res, news_res = await asyncio.gather(
         safe_fetch(fetch_environment(use_lat, use_lng)) if has_location else asyncio.sleep(0, result={"stale": True, "data": None}),
-        safe_fetch(fetch_plants(current_user.id, db)),
-        safe_fetch(fetch_rewards(current_user.id, db)),
-        safe_fetch(fetch_drives(use_lat, use_lng, db)) if has_location else asyncio.sleep(0, result={"stale": True, "data": None}),
-        safe_fetch(fetch_news(use_lat, use_lng, db))
+        safe_fetch(isolated(fetch_plants, current_user.id)),
+        safe_fetch(isolated(fetch_rewards, current_user.id)),
+        safe_fetch(isolated(fetch_drives, use_lat, use_lng)) if has_location else asyncio.sleep(0, result={"stale": True, "data": None}),
+        safe_fetch(isolated(fetch_news, use_lat, use_lng)),
     )
-    
-    env_res, plants_res, rewards_res, drives_res, news_res = results
-    
+
     user_info = {
         "id": current_user.id,
         "name": current_user.name,
