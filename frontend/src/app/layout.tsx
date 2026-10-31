@@ -3,6 +3,7 @@ import { Inter, Fraunces, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import SmoothScrolling from "@/components/shared/SmoothScrolling";
+import StartupIntro from "@/components/shared/StartupIntro";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -93,7 +94,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-parchment text-canopy antialiased">
         <AuthProvider>
-          <SmoothScrolling>{children}</SmoothScrolling>
+          <StartupIntro>
+            <SmoothScrolling>{children}</SmoothScrolling>
+          </StartupIntro>
         </AuthProvider>
       </body>
     </html>

@@ -447,6 +447,7 @@ export default function CinematicIntroLoader({
       }, 500);
       return () => {
         clearTimeout(t);
+        gsap.killTweensOf(container);
         cancelAnimationFrame(raf);
         window.removeEventListener("resize", handleResize);
       };
@@ -546,6 +547,7 @@ export default function CinematicIntroLoader({
       window.removeEventListener("resize", handleResize);
       cancelAnimationFrame(raf);
       tl.kill();
+      gsap.killTweensOf(container);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minDisplayTime, autoDismiss, leaves, coverLeaves]);
@@ -553,6 +555,8 @@ export default function CinematicIntroLoader({
   return (
     <div
       ref={containerRef}
+      role="status"
+      aria-label="Welcome to GreenXchange. Growing a greener world."
       className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden select-none bg-[#e8dec6]"
       style={
         {
