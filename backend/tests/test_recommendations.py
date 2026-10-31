@@ -8,6 +8,7 @@ from app.models.enums import MaintenanceLevel, SpaceType, ToxicityLevel, Allerge
 from app.schemas.recommendation import RecommendationRequest, PlantAnalysisRequest
 from app.services.recommendation.helpers import parse_temp_range
 from app.services.recommendation.engine import RecommendationEngine
+from app.services.recommendation.engine import get_scoring_model
 from app.services.recommendation.deterministic import DeterministicScoringModel
 
 
@@ -32,6 +33,41 @@ def engine(plants):
 
 
 PROFILE = {"weather": {"temperature": 25}, "simulated": True}
+
+
+def test_missing_deployed_model_still_returns_recommendations(monkeypatch, tmp_path, caplog):
+    monkeypatch.setenv("RECOMMENDATION_MODEL_PATH", str(tmp_path / "missing.pkl"))
+    instance = RecommendationEngine(FakeDB([species()]))
+    output = asyncio.run(instance.run(RecommendationRequest(lat=10, lng=20, experience_level="low"), PROFILE))
+    assert [item.common_name for item in output] == ["Tulsi"]
+    assert isinstance(instance.model, DeterministicScoringModel)
+    assert "using catalog-based scoring" in caplog.text
+
+
+def test_missing_label_encoder_uses_catalog_scoring(monkeypatch, tmp_path):
+    model = tmp_path / "model.pkl"
+    model.touch()
+    monkeypatch.setenv("RECOMMENDATION_MODEL_PATH", str(model))
+    monkeypatch.setenv("LABEL_ENCODER_PATH", str(tmp_path / "missing_encoder.pkl"))
+    assert isinstance(get_scoring_model(), DeterministicScoringModel)
+
+
+def test_available_configured_model_is_used(monkeypatch, tmp_path):
+    import sys
+    model = tmp_path / "model.pkl"
+    encoder = tmp_path / "label_encoder.pkl"
+    model.touch(); encoder.touch()
+    monkeypatch.setenv("RECOMMENDATION_MODEL_PATH", str(model))
+    monkeypatch.delenv("LABEL_ENCODER_PATH", raising=False)
+    loaded = object()
+    monkeypatch.setitem(sys.modules, "app.services.recommendation.ml_model",
+                        SimpleNamespace(PickleScoringModel=lambda path: loaded if path == str(model) else None))
+    assert get_scoring_model() is loaded
+
+
+def test_unconfigured_model_uses_catalog_scoring(monkeypatch):
+    monkeypatch.delenv("RECOMMENDATION_MODEL_PATH", raising=False)
+    assert isinstance(get_scoring_model(), DeterministicScoringModel)
 
 
 @pytest.mark.parametrize("text,expected", [("15-35°C", (15, 35)), ("-10–5°C", (-10, 5)), ("-15--5 C", (-15, -5)), ("10 to 20", (10, 20)), ("unknown", None), ("35-15", None)])

@@ -10,6 +10,7 @@ from app.models.base import Base
 from app.db.session import engine
 from app.api import health, auth, users, environment, recommendations, plants, growth, rewards, drives, news, dashboard
 from app.core.logging import setup_logging
+from app.core.request_logging import log_requests
 from app.core.config import settings
 
 setup_logging()
@@ -424,26 +425,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": safe_errors}
     )
 
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    request_id = str(uuid.uuid4())
-    logger.info("Request started", extra={
-        "endpoint": request.url.path,
-        "method": request.method,
-        "request_id": request_id
-    })
-    response = await call_next(request)
-    logger.info("Request completed", extra={
-        "endpoint": request.url.path,
-        "method": request.method,
-        "request_id": request_id,
-        "status_code": response.status_code
-    })
-    return response
+app.middleware("http")(log_requests)
 
 # CORS — allow frontend origin + localhost for dev
 allowed_origins = [
-    settings.FRONTEND_URL,
+    settings.FRONTEND_URL.rstrip("/"),
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]

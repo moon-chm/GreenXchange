@@ -1,4 +1,6 @@
 import os
+import logging
+from pathlib import Path
 from fastapi import HTTPException
 from app.services.recommendation.helpers import parse_temp_range, normalize_name, environment_note
 from typing import List, Dict, Any
@@ -8,11 +10,22 @@ from app.schemas.recommendation import (
 )
 from app.services.recommendation.deterministic import DeterministicScoringModel
 
+logger = logging.getLogger(__name__)
+
 def get_scoring_model():
-    model_path = os.getenv("RECOMMENDATION_MODEL_PATH")
+    model_path = os.getenv("RECOMMENDATION_MODEL_PATH", "").strip()
     if model_path:
-        from app.services.recommendation.ml_model import PickleScoringModel
-        return PickleScoringModel(model_path)
+        encoder_path = os.getenv("LABEL_ENCODER_PATH", str(Path(model_path).with_name("label_encoder.pkl")))
+        missing = [path for path in (model_path, encoder_path) if not Path(path).is_file()]
+        if missing:
+            logger.warning("Recommendation model artifacts missing: %s; using catalog-based scoring", ", ".join(missing))
+        else:
+            from app.services.recommendation.ml_model import PickleScoringModel
+            try:
+                return PickleScoringModel(model_path)
+            except FileNotFoundError:
+                # An artifact may disappear between the file check and loading.
+                logger.warning("Recommendation model artifact disappeared; using catalog-based scoring", exc_info=True)
     return DeterministicScoringModel()
 
 
